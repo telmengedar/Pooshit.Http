@@ -1,6 +1,6 @@
 ﻿using System.Net.Http;
 
-namespace NightlyCode.Http.Encodings; 
+namespace Pooshit.Http.Encodings; 
 
 /// <summary>
 /// encoder for http content

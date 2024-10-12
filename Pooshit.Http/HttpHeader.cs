@@ -1,4 +1,4 @@
-namespace NightlyCode.Http; 
+namespace Pooshit.Http; 
 
 /// <summary>
 /// header in a http message

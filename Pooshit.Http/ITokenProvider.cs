@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
 
-namespace NightlyCode.Http; 
+namespace Pooshit.Http; 
 
 /// <summary>
 /// provides tokens to be used for authentication 

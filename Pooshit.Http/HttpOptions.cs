@@ -1,7 +1,7 @@
 using System;
-using NightlyCode.Http.Encodings;
+using Pooshit.Http.Encodings;
 
-namespace NightlyCode.Http; 
+namespace Pooshit.Http; 
 
 /// <summary>
 /// options for http requests

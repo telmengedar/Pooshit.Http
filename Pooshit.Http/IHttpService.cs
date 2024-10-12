@@ -2,7 +2,7 @@
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace NightlyCode.Http; 
+namespace Pooshit.Http; 
 
 /// <summary>
 /// service for sending web / rest requests

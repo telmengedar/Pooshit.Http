@@ -1,4 +1,4 @@
-﻿namespace NightlyCode.Http.Paths; 
+﻿namespace Pooshit.Http.Paths; 
 
 /// <summary>
 /// helper method for rest paths

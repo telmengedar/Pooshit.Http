@@ -1,4 +1,4 @@
-﻿using NightlyCode.Http.Paths;
+﻿using Pooshit.Http.Paths;
 
 namespace Http.Tests;
 

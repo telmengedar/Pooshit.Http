@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Http", "Http\Http.csproj", "{F5E875B9-E41F-4E03-A1E9-9D4B26CCC3B9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pooshit.Http", "Pooshit.Http\Pooshit.Http.csproj", "{F5E875B9-E41F-4E03-A1E9-9D4B26CCC3B9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Http.Tests", "Http.Tests\Http.Tests.csproj", "{3530BBE6-1BE8-430F-8B9C-15818D7C9D89}"
 EndProject

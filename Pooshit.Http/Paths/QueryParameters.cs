@@ -7,7 +7,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Web;
 
-namespace NightlyCode.Http.Paths; 
+namespace Pooshit.Http.Paths; 
 
 /// <summary>
 /// parameters used in query strings
@@ -142,7 +142,7 @@ public class QueryParameters {
             
             string value;
             if(parameter.Value is DateTime dt)
-                value = dt.ToString("O");
+                value = HttpUtility.UrlEncode(dt.ToString("O"));
             else if (parameter.Value is IEnumerable array and not string)
                 value = $"{{{string.Join(",", array.Cast<object>().Select(i => HttpUtility.UrlEncode(i.ToString())))}}}";
             else value = HttpUtility.UrlEncode(parameter.Value.ToString());

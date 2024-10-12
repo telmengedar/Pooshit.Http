@@ -10,9 +10,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
-using NightlyCode.Http.Encodings;
+using Pooshit.Http.Encodings;
 
-namespace NightlyCode.Http; 
+namespace Pooshit.Http; 
 
 /// <inheritdoc />
 public class HttpService : IHttpService {

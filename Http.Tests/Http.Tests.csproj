@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Http\Http.csproj" />
+      <ProjectReference Include="..\Pooshit.Http\Pooshit.Http.csproj" />
     </ItemGroup>
 
 </Project>

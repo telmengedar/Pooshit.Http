@@ -1,9 +1,7 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Net.Http;
-using System.Net.Http.Headers;
 
-namespace NightlyCode.Http; 
+namespace Pooshit.Http; 
 
 /// <summary>
 /// data to be posted as form-data

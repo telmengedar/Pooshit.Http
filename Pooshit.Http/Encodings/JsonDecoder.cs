@@ -1,7 +1,7 @@
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace NightlyCode.Http.Encodings; 
+namespace Pooshit.Http.Encodings; 
 
 /// <inheritdoc />
 public class JsonDecoder : IResponseDecoder {
