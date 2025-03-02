@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="b29b8b80-2d62-48db-95b7-25d35ce20498" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.Pooshit.Http/.idea/.name" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Pooshit.Http/.idea/.name" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;telmengedar&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/telmengedar/Pooshit.Http.git",
+    "accountId": "37d3ad7b-d78e-44f6-b364-b5a3ef673f81"
+  }
+}]]></component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/Encodings/JsonDecoder.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/Encodings/JsonEncoder.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/FormData.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/HttpHeader.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/HttpOptions.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/ITokenProvider.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/Paths/QueryParameter.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/Paths/QueryParameters.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Pooshit.Http/Paths/Rest.cs" root0="FORCE_HIGHLIGHTING" />
+  </component>
+  <component name="KubernetesApiPersistence">{}</component>
+  <component name="KubernetesApiProvider">{
+  &quot;isMigrated&quot;: true
+}</component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
+  <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
+  <component name="ProjectId" id="29R24Fl3d7YAvA46rrJE99P7ZW5" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;61b3b782-b11f-4072-a1bc-7af304392268.executor&quot;: &quot;Debug&quot;,
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  },
+  &quot;keyToStringList&quot;: {
+    &quot;rider.external.source.directories&quot;: [
+      &quot;C:\\Users\\Toni\\AppData\\Roaming\\JetBrains\\Rider2024.1\\resharper-host\\DecompilerCache&quot;,
+      &quot;C:\\Users\\Toni\\AppData\\Roaming\\JetBrains\\Rider2024.1\\resharper-host\\SourcesCache&quot;,
+      &quot;C:\\Users\\Toni\\AppData\\Local\\Symbols\\src&quot;
+    ]
+  }
+}</component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="b29b8b80-2d62-48db-95b7-25d35ce20498" name="Changes" comment="" />
+      <created>1653061383374</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1653061383374</updated>
+      <workItem from="1653061390972" duration="4042000" />
+      <workItem from="1653878444842" duration="754000" />
+      <workItem from="1654019038587" duration="2703000" />
+      <workItem from="1654781444905" duration="811000" />
+      <workItem from="1657541557918" duration="1677000" />
+      <workItem from="1657637139163" duration="3622000" />
+      <workItem from="1659430437633" duration="3110000" />
+      <workItem from="1659445102696" duration="2600000" />
+      <workItem from="1664828862063" duration="320000" />
+      <workItem from="1665942106673" duration="149000" />
+      <workItem from="1665943207289" duration="2834000" />
+      <workItem from="1670524044397" duration="1110000" />
+      <workItem from="1671630810104" duration="2881000" />
+      <workItem from="1672053241152" duration="3967000" />
+      <workItem from="1674422774710" duration="3139000" />
+      <workItem from="1682884376816" duration="899000" />
+      <workItem from="1683626533215" duration="2097000" />
+      <workItem from="1686183713718" duration="322000" />
+      <workItem from="1686492826660" duration="2891000" />
+      <workItem from="1690319501375" duration="711000" />
+      <workItem from="1692023127954" duration="2454000" />
+      <workItem from="1692611281051" duration="830000" />
+      <workItem from="1696352358248" duration="796000" />
+      <workItem from="1705409217162" duration="766000" />
+      <workItem from="1710781860938" duration="1301000" />
+      <workItem from="1719395316721" duration="1333000" />
+      <workItem from="1725435513454" duration="6185000" />
+      <workItem from="1728753398159" duration="2415000" />
+    </task>
+    <task id="LOCAL-00001" summary="initial commit">
+      <option name="closed" value="true" />
+      <created>1725446010981</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1725446010981</updated>
+    </task>
+    <task id="LOCAL-00002" summary="Refactor namespace and project structure to Pooshit.Http&#10;&#10;Renamed the primary namespace from NightlyCode.Http to Pooshit.Http and reorganized the project structure accordingly. This involved updating namespace references, renaming project files, and modifying project metadata to reflect the new name.">
+      <option name="closed" value="true" />
+      <created>1728777250896</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1728777250896</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnityCheckinConfiguration" checkUnsavedScenes="true" />
+  <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+    <MESSAGE value="initial commit" />
+    <MESSAGE value="Refactor namespace and project structure to Pooshit.Http&#10;&#10;Renamed the primary namespace from NightlyCode.Http to Pooshit.Http and reorganized the project structure accordingly. This involved updating namespace references, renaming project files, and modifying project metadata to reflect the new name." />
+    <option name="LAST_COMMIT_MESSAGE" value="Refactor namespace and project structure to Pooshit.Http&#10;&#10;Renamed the primary namespace from NightlyCode.Http to Pooshit.Http and reorganized the project structure accordingly. This involved updating namespace references, renaming project files, and modifying project metadata to reflect the new name." />
+  </component>
+</project>

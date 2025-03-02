@@ -3,13 +3,13 @@
     <PropertyGroup>
         <LangVersion>default</LangVersion>
         <PackageId>Pooshit.Http</PackageId>
-        <PackageVersion>0.7.7-preview</PackageVersion>
+        <PackageVersion>0.7.8-preview</PackageVersion>
         <Title>Pooshit.Http</Title>
         <Authors>Toni Gottschall</Authors>
         <Description>Library simplifying http request handling</Description>
         <PackageTags>http</PackageTags>
         <Company></Company>
-        <AssemblyVersion>0.7.7</AssemblyVersion>
+        <AssemblyVersion>0.7.8</AssemblyVersion>
         <PackageLicenseFile>LICENSE</PackageLicenseFile>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
@@ -21,6 +21,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Pooshit.Json" Version="0.3.7-preview" />
+      <PackageReference Include="Pooshit.Json" Version="0.3.10-preview" />
     </ItemGroup>
 </Project>
