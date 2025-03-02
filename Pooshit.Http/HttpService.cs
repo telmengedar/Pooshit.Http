@@ -74,7 +74,7 @@ public class HttpService : IHttpService {
 
         if (options?.Headers != null) {
             foreach (HttpHeader header in options.Headers) {
-                request.Headers.Add(header.Key, header.Value);
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
             }
         }
         return request;
