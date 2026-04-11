@@ -60,6 +60,18 @@ public class HttpService : IHttpService {
     }
 #endif
         
+    static string EncodeHeaderString (string input)
+    {
+        StringBuilder sb = new();
+
+        foreach (char ch in input) {
+            if ((ch < 32 && ch != 9) || ch == 127)
+                sb.Append($"%{(int)ch:x2}");
+        }
+
+        return sb.ToString ();
+    }
+    
     public async Task<HttpRequestMessage> CreateRequest(string url, HttpMethod method, HttpOptions options) {
         HttpRequestMessage request = new(method, url);
         if (options?.TokenProvider != null) {
@@ -74,7 +86,7 @@ public class HttpService : IHttpService {
 
         if (options?.Headers != null) {
             foreach (HttpHeader header in options.Headers) {
-                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                request.Headers.TryAddWithoutValidation(EncodeHeaderString(header.Key), EncodeHeaderString(header.Value));
             }
         }
         return request;
