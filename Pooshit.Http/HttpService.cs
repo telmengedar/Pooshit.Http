@@ -67,6 +67,7 @@ public class HttpService : IHttpService {
         foreach (char ch in input) {
             if ((ch < 32 && ch != 9) || ch == 127)
                 sb.Append($"%{(int)ch:x2}");
+            else sb.Append(ch);
         }
 
         return sb.ToString ();
