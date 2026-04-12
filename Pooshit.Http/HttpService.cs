@@ -65,8 +65,8 @@ public class HttpService : IHttpService {
         StringBuilder sb = new();
 
         foreach (char ch in input) {
-            if ((ch < 32 && ch != 9) || ch == 127)
-                sb.Append($"%{(int)ch:x2}");
+            if (ch > 127)
+                sb.Append($"\\u{(int)ch:x4}");
             else sb.Append(ch);
         }
 
