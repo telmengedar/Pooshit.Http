@@ -158,7 +158,7 @@ public class HttpService : IHttpService {
             using StreamReader reader = new(await response.Content.ReadAsStreamAsync());
             string responseBody = await reader.ReadToEndAsync();
             if(!string.IsNullOrEmpty(responseBody))
-                throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response)}\n{responseBody}");
+                throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response)}\n{responseBody}", body: responseBody);
             throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response)}");
         }
     }

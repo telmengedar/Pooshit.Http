@@ -13,13 +13,19 @@ public class HttpServiceException : Exception {
     /// <param name="response">response of http call</param>
     /// <param name="message">error message</param>
     /// <param name="innerException">inner exception which lead to this exception (optional)</param>
-    public HttpServiceException(HttpResponseMessage response, string message=null, Exception innerException=null)
+    public HttpServiceException(HttpResponseMessage response, string message=null, Exception innerException=null, string body=null)
         : base(message??$"{response.StatusCode}: {response.ReasonPhrase}", innerException) {
         Response = response;
+        Body = body;
     }
 
     /// <summary>
     /// error response message
     /// </summary>
     public HttpResponseMessage Response { get; }
+
+    /// <summary>
+    /// raw response body text, read before the response was disposed (null when the response had no body)
+    /// </summary>
+    public string Body { get; }
 }
