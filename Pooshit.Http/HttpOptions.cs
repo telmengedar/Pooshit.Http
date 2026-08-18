@@ -1,13 +1,14 @@
 using System;
+using System.Net.Http;
 using Pooshit.Http.Encodings;
 
-namespace Pooshit.Http; 
+namespace Pooshit.Http;
 
 /// <summary>
 /// options for http requests
 /// </summary>
 public class HttpOptions {
-        
+
     /// <summary>
     /// decoder for responses (optional, defaults to json)
     /// </summary>
@@ -47,4 +48,9 @@ public class HttpOptions {
     /// headers to add to request
     /// </summary>
     public HttpHeader[] Headers { get; set; }
+
+    /// <summary>
+    /// completion behavior for the send; ResponseHeadersRead hands stream and raw-message results to the caller undisposed, but error bodies are always read fully
+    /// </summary>
+    public HttpCompletionOption CompletionOption { get; set; }
 }

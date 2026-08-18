@@ -153,6 +153,10 @@ public class HttpService : IHttpService {
         return builder.ToString();
     }
         
+    Task<HttpResponseMessage> SendRequest(HttpRequestMessage request, HttpOptions options) {
+        return client.SendAsync(request, options?.CompletionOption ?? HttpCompletionOption.ResponseContentRead);
+    }
+
     async Task CheckHttpResponse(HttpResponseMessage response) {
         if ((int)response.StatusCode < 200 || (int)response.StatusCode > 399) {
             using StreamReader reader = new(await response.Content.ReadAsStreamAsync());
@@ -167,8 +171,10 @@ public class HttpService : IHttpService {
         if(typeof(T) == typeof(HttpResponseMessage))
             return (T)(object)response;
 
-        if((response.Content.Headers.ContentLength ?? 0) == 0)
+        if(response.Content.Headers.ContentLength == 0) {
+            response.Dispose();
             return default;
+        }
 
         if(typeof(T) == typeof(Stream))
             // don't close http response if it is to be read as stream
@@ -215,7 +221,9 @@ public class HttpService : IHttpService {
 
                 Uri requestUri = response.RequestMessage?.RequestUri;
                 string url = requestUri != null ? new Uri(requestUri, location).ToString() : location;
-                response = await client.SendAsync(await CreateRequest(url, HttpMethod.Get, options));
+                HttpResponseMessage previousResponse = response;
+                response = await SendRequest(await CreateRequest(url, HttpMethod.Get, options), options);
+                previousResponse.Dispose();
             }
             else if (response.StatusCode is HttpStatusCode.RedirectKeepVerb)
                 // TODO 307/308: re-send with original method + body instead of GET
@@ -230,96 +238,104 @@ public class HttpService : IHttpService {
 
     /// <inheritdoc />
     public async Task<TResponse> Post<TRequest, TResponse>(string url, TRequest content, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Post, content, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Post, content, options), options);
         return await HandleResponse<TResponse>(response, options);
     }
 
     /// <inheritdoc />
     public async Task Post(string url, HttpOptions options = null) {
-        await client.SendAsync(await CreateRequest(url, HttpMethod.Post, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Post, options), options);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task<TResponse> Post<TResponse>(string url, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Post, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Post, options), options);
         return await HandleResponse<TResponse>(response, options);
     }
 
     /// <inheritdoc />
     public async Task Post<TRequest>(string url, TRequest content, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Post, content, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Post, content, options), options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task<TResponse> Put<TRequest, TResponse>(string url, TRequest content, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Put, content, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Put, content, options), options);
         return await HandleResponse<TResponse>(response, options);
     }
 
     /// <inheritdoc />
     public async Task Put<TRequest>(string url, TRequest content, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Put, content, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Put, content, options), options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task<TResponse> Patch<TRequest, TResponse>(string url, TRequest content, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, new HttpMethod("PATCH"), content, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, new HttpMethod("PATCH"), content, options), options);
         return await HandleResponse<TResponse>(response, options);
     }
 
     /// <inheritdoc />
     public async Task Patch<TRequest>(string url, TRequest content, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, new HttpMethod("PATCH"), content, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, new HttpMethod("PATCH"), content, options), options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task Get(string url, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Get, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Get, options), options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task<T> Get<T>(string url, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Get, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Get, options), options);
         return await HandleResponse<T>(response, options);
     }
 
     /// <inheritdoc />
     public async Task Delete(string url, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Delete, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Delete, options), options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task<T> Delete<T>(string url, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, HttpMethod.Delete, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Delete, options), options);
         return await HandleResponse<T>(response, options);
     }
 
     /// <inheritdoc />
     public async Task Request<TBody>(string method, string url, TBody body, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, new HttpMethod(method), body, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, new HttpMethod(method), body, options), options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task<TResponse> Request<TBody, TResponse>(string method, string url, TBody body, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(await CreateRequest(url, new HttpMethod(method), body, options));
+        HttpResponseMessage response = await SendRequest(await CreateRequest(url, new HttpMethod(method), body, options), options);
         return await HandleResponse<TResponse>(response, options);
     }
 
     /// <inheritdoc />
     public async Task<TResponse> Send<TResponse>(HttpRequestMessage request, HttpOptions options = null) {
-        HttpResponseMessage response = await client.SendAsync(request);
+        HttpResponseMessage response = await SendRequest(request, options);
         return await HandleResponse<TResponse>(response, options);
     }
 
     /// <inheritdoc />
-    public async Task Send(HttpRequestMessage request) {
-        HttpResponseMessage response = await client.SendAsync(request);
+    public async Task Send(HttpRequestMessage request, HttpOptions options = null) {
+        HttpResponseMessage response = await SendRequest(request, options);
         await CheckHttpResponse(response);
+        response.Dispose();
     }
 }
