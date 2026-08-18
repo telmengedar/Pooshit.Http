@@ -1,38 +1,14 @@
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
+using Http.Tests.TestSupport;
 using Pooshit.Http;
 
 namespace Http.Tests;
 
 [TestFixture, Parallelizable]
 public class HttpServiceRedirectTests {
-
-    /// <summary>
-    /// handler which returns a pre-configured sequence of responses without touching the network,
-    /// recording the uri of every request it received
-    /// </summary>
-    class SequenceHandler : HttpMessageHandler {
-        readonly Queue<HttpResponseMessage> responses;
-
-        public SequenceHandler(params HttpResponseMessage[] responses) {
-            this.responses = new(responses);
-        }
-
-        public List<Uri?> RequestedUris { get; } = new();
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
-            RequestedUris.Add(request.RequestUri);
-            HttpResponseMessage response = responses.Dequeue();
-            // real handlers (SocketsHttpHandler etc.) stamp the originating request onto the
-            // response; HttpService relies on RequestMessage.RequestUri to resolve redirects
-            response.RequestMessage = request;
-            return Task.FromResult(response);
-        }
-    }
 
     [Test, Parallelizable]
     public async Task AbsoluteLocationResolvesToAbsoluteUrl() {
@@ -92,5 +68,40 @@ public class HttpServiceRedirectTests {
 
         Assert.That(result, Is.EqualTo("done"));
         Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://other-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    public async Task StreamingOptionCarriesThroughRedirectHop() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        ProbeContent finalContent = new("done"u8.ToArray());
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = finalContent };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        using HttpResponseMessage result = await service.Get<HttpResponseMessage>(
+            "https://original-host.example/start",
+            new HttpOptions { FollowRedirects = true, CompletionOption = HttpCompletionOption.ResponseHeadersRead });
+
+        Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(finalContent.BytesRead, Is.Zero);
+    }
+
+    [Test, Parallelizable]
+    public async Task SupersededRedirectResponseIsDisposed() {
+        ProbeContent redirectContent = new([]);
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Get<string>("https://original-host.example/start", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(redirectContent.Disposed, Is.True);
     }
 }

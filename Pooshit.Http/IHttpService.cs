@@ -163,6 +163,7 @@ public interface IHttpService {
     /// sends a request to the server
     /// </summary>
     /// <param name="request">request to send</param>
+    /// <param name="options">options for request (optional)</param>
     /// <returns>response from server</returns>
-    Task Send(HttpRequestMessage request);
+    Task Send(HttpRequestMessage request, HttpOptions options = null);
 }
