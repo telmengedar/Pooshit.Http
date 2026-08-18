@@ -209,13 +209,16 @@ public class HttpService : IHttpService {
     async Task<T> HandleResponse<T>(HttpResponseMessage response, HttpOptions options) {
         if (options?.FollowRedirects ?? false) {
             if (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod) {
-                string url = response.Headers.Location?.ToString();
+                string location = response.Headers.Location?.ToString();
                 if (options.UrlProcessor != null)
-                    url = options.UrlProcessor(url);
-                url = $"{response.RequestMessage?.RequestUri?.GetLeftPart(UriPartial.Authority)}{url}";
+                    location = options.UrlProcessor(location);
+
+                Uri requestUri = response.RequestMessage?.RequestUri;
+                string url = requestUri != null ? new Uri(requestUri, location).ToString() : location;
                 response = await client.SendAsync(await CreateRequest(url, HttpMethod.Get, options));
             }
             else if (response.StatusCode is HttpStatusCode.RedirectKeepVerb)
+                // TODO 307/308: re-send with original method + body instead of GET
                 throw new NotSupportedException("307 redirect is not implemented yet");
         }
             
