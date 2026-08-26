@@ -90,8 +90,9 @@ public class HttpServiceRedirectTests {
     }
 
     [Test, Parallelizable]
+    [Description("DiVoid #9622: the superseded response is disposed because the hop happened, not because an unfollowed 302 was read out")]
     public async Task SupersededRedirectResponseIsDisposed() {
-        ProbeContent redirectContent = new([]);
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
         using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { Content = redirectContent };
         redirect.Headers.Location = new Uri("https://other-host.example/target");
 
@@ -102,6 +103,7 @@ public class HttpServiceRedirectTests {
 
         await service.Get<string>("https://original-host.example/start", new HttpOptions { FollowRedirects = true });
 
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
         Assert.That(redirectContent.Disposed, Is.True);
     }
 
@@ -214,6 +216,26 @@ public class HttpServiceRedirectTests {
         Assert.That(HeaderValues(handler.Requests[0], "X-Option-Marker"), Is.EqualTo(new[] { "option-header-value" }));
         Assert.That(HeaderValues(handler.Requests[1], "Expect"), Is.Empty);
         Assert.That(HeaderValues(handler.Requests[1], "X-Option-Marker"), Is.EqualTo(new[] { "option-header-value" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9622: the hop is re-issued as a bodyless GET, so the verb that produced the redirect does not carry to it")]
+    public async Task PostWithBody_FollowedRedirect_HopIsIssuedAsGetWithoutBody() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[0].Method.Method, Is.EqualTo("POST"));
+        Assert.That(handler.Requests[0].Content, Is.Not.Null);
+        Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("GET"));
+        Assert.That(handler.Requests[1].Content, Is.Null);
     }
 
     [Test, Parallelizable]
