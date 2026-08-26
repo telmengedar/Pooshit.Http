@@ -41,6 +41,25 @@ public class HttpService : IHttpService {
         get => client.Timeout;
         set => client.Timeout = value;
     }
+
+    /// <summary>
+    /// header rendering used for error messages when a call does not specify one of its own
+    /// </summary>
+    public HeaderDumpMode HeaderDumpMode { get; set; } = HeaderDumpMode.Redacted;
+
+    /// <summary>
+    /// names of headers whose values are replaced by a placeholder when headers are dumped in redacted mode; matched ignoring case and meant to be configured when the service is created
+    /// </summary>
+    public ISet<string> SensitiveHeaders { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "Authorization",
+        "Proxy-Authorization",
+        "Cookie",
+        "Set-Cookie",
+        "Api-Key",
+        "X-Api-Key",
+        "X-Auth-Token",
+        "X-Access-Token"
+    };
         
 #if !NETSTANDARD2_0
     /// <summary>
@@ -140,16 +159,27 @@ public class HttpService : IHttpService {
         return request;
     }
 
-    string DumpHeaders(HttpResponseMessage response) {
+    void DumpHeader(StringBuilder builder, KeyValuePair<string, IEnumerable<string>> header, HeaderDumpMode mode) {
+        builder.Append(header.Key).Append(": ");
+        if (mode == HeaderDumpMode.Redacted && SensitiveHeaders.Contains(header.Key))
+            builder.AppendLine("<redacted>");
+        else builder.AppendLine(string.Join("; ", header.Value));
+    }
+
+    string DumpHeaders(HttpResponseMessage response, HttpOptions options) {
+        HeaderDumpMode mode = options?.HeaderDumpMode ?? HeaderDumpMode;
+        if (mode == HeaderDumpMode.Omitted)
+            return string.Empty;
+
         StringBuilder builder = new();
         builder.AppendLine("Request Headers");
         if(response.RequestMessage!=null)
             foreach (KeyValuePair<string, IEnumerable<string>> header in response.RequestMessage.Headers)
-                builder.Append(header.Key).Append(": ").AppendLine(string.Join("; ", header.Value));
-            
+                DumpHeader(builder, header, mode);
+
         builder.AppendLine("Response Headers");
         foreach(KeyValuePair<string, IEnumerable<string>> header in response.Headers)
-            builder.Append(header.Key).Append(": ").AppendLine(string.Join("; ", header.Value));
+            DumpHeader(builder, header, mode);
         return builder.ToString();
     }
         
@@ -157,13 +187,13 @@ public class HttpService : IHttpService {
         return client.SendAsync(request, options?.CompletionOption ?? HttpCompletionOption.ResponseContentRead);
     }
 
-    async Task CheckHttpResponse(HttpResponseMessage response) {
+    async Task CheckHttpResponse(HttpResponseMessage response, HttpOptions options) {
         if ((int)response.StatusCode < 200 || (int)response.StatusCode > 399) {
             using StreamReader reader = new(await response.Content.ReadAsStreamAsync());
             string responseBody = await reader.ReadToEndAsync();
             if(!string.IsNullOrEmpty(responseBody))
-                throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response)}\n{responseBody}", body: responseBody);
-            throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response)}");
+                throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response, options)}\n{responseBody}", body: responseBody);
+            throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response, options)}");
         }
     }
 
@@ -231,7 +261,7 @@ public class HttpService : IHttpService {
         }
             
         if (!(typeof(T) == typeof(HttpResponseMessage)))
-            await CheckHttpResponse(response);
+            await CheckHttpResponse(response, options);
 
         return await ReadResponse<T>(response, options?.Decoder);
     }
@@ -257,7 +287,7 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Post<TRequest>(string url, TRequest content, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Post, content, options), options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 
@@ -270,7 +300,7 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Put<TRequest>(string url, TRequest content, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Put, content, options), options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 
@@ -283,14 +313,14 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Patch<TRequest>(string url, TRequest content, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, new HttpMethod("PATCH"), content, options), options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 
     /// <inheritdoc />
     public async Task Get(string url, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Get, options), options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 
@@ -303,7 +333,7 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Delete(string url, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Delete, options), options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 
@@ -316,7 +346,7 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Request<TBody>(string method, string url, TBody body, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, new HttpMethod(method), body, options), options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 
@@ -335,7 +365,7 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Send(HttpRequestMessage request, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(request, options);
-        await CheckHttpResponse(response);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 }

@@ -53,4 +53,9 @@ public class HttpOptions {
     /// completion behavior for the send; ResponseHeadersRead hands stream and raw-message results to the caller undisposed, but error bodies are always read fully
     /// </summary>
     public HttpCompletionOption CompletionOption { get; set; }
+
+    /// <summary>
+    /// header rendering for error messages of this call; when unset the mode configured on the service is used
+    /// </summary>
+    public HeaderDumpMode? HeaderDumpMode { get; set; }
 }
