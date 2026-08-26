@@ -85,7 +85,7 @@ public class HttpService : IHttpService {
 #endif
         
     static bool IsSameOrigin(Uri origin, Uri target) {
-        if (origin == null || target == null || !origin.IsAbsoluteUri || !target.IsAbsoluteUri)
+        if (origin == null || target == null)
             return false;
 
         return string.Equals(origin.Scheme, target.Scheme, StringComparison.OrdinalIgnoreCase)

@@ -423,4 +423,48 @@ public class HttpServiceRedirectTests {
         Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.Empty);
         Assert.That(HeaderValues(handler.Requests[1], "X-Caller-Marker"), Is.EqualTo(new[] { "caller-header-value" }));
     }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9646: a non-ASCII host keeps its case through Uri, so the origin comparison has to match it ignoring case")]
+    public async Task GetWithTokenProvider_HostDiffersOnlyByNonAsciiCase_AuthorizationReachesBothHops() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://\u00e4\u00f6\u00fc.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Get<string>("https://\u00c4\u00d6\u00dc.example/start",
+                                  new HttpOptions { FollowRedirects = true, TokenProvider = new CountingTokenProvider("url-overload-token") });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[0].RequestUri!.Host, Is.EqualTo("\u00c4\u00d6\u00dc.example"));
+        Assert.That(handler.Requests[1].RequestUri!.Host, Is.EqualTo("\u00e4\u00f6\u00fc.example"));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9646: a name removed from SensitiveHeaders rides the cross-origin hop, so the set is the sole authority and not a floor over hard-wired defaults")]
+    public async Task SendWithAuthorizationHeader_NameRemovedFromSensitiveHeaders_CredentialRidesCrossOriginHop() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+        service.SensitiveHeaders.Remove("Authorization");
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer caller-token");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].RequestUri!.Host, Is.EqualTo("other-host.example"));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
+    }
 }
