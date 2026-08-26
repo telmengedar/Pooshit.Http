@@ -248,18 +248,21 @@ public class HttpService : IHttpService {
             using(response)
                 return (T)(object)await response.Content.ReadAsByteArrayAsync();
 
-        switch(response.Content.Headers.ContentType?.MediaType)
-        {
-            case "application/json":
-                using (response) {
-                    decoder ??= new JsonDecoder();
-                    try {
-                        return await decoder.Decode<T>(response);
-                    }
-                    catch (Exception e) {
-                        throw new HttpServiceException(response, $"Error decoding response of '{response.RequestMessage?.RequestUri}'", e);
-                    }
+        string mediaType = response.Content.Headers.ContentType?.MediaType;
+
+        if (IsJsonMediaType(mediaType))
+            using (response) {
+                decoder ??= new JsonDecoder();
+                try {
+                    return await decoder.Decode<T>(response);
                 }
+                catch (Exception e) {
+                    throw new HttpServiceException(response, $"Error decoding response of '{response.RequestMessage?.RequestUri}'", e);
+                }
+            }
+
+        switch(mediaType)
+        {
             case "application/xml":
             case "text/xml":
                 using (response)
@@ -269,7 +272,48 @@ public class HttpService : IHttpService {
                     return (T)(object)await response.Content.ReadAsStringAsync();
         }
 
-        return (T)(object)await response.Content.ReadAsStreamAsync();
+        return await DecodeUnknownMediaType<T>(response, decoder, mediaType);
+    }
+
+    static bool IsJsonMediaType(string mediaType) {
+        if (string.IsNullOrEmpty(mediaType))
+            return false;
+
+        return string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mediaType, "text/json", StringComparison.OrdinalIgnoreCase)
+            || mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool StartsJsonStructure(string body) {
+        foreach (char character in body) {
+            if (character == '\ufeff' || char.IsWhiteSpace(character))
+                continue;
+            return character is '{' or '[';
+        }
+
+        return false;
+    }
+
+    async Task<T> DecodeUnknownMediaType<T>(HttpResponseMessage response, IResponseDecoder decoder, string mediaType) {
+        string body = await response.Content.ReadAsStringAsync();
+        string reported = string.IsNullOrEmpty(mediaType) ? "<none>" : mediaType;
+        string context = $"'{response.RequestMessage?.RequestUri}' (media type '{reported}', requested type '{typeof(T).Name}')";
+
+        if (!StartsJsonStructure(body))
+            throw new HttpServiceException(response, $"Unable to decode response of {context}", body: body);
+
+        decoder ??= new JsonDecoder();
+
+        T decoded;
+        try {
+            decoded = await decoder.Decode<T>(response);
+        }
+        catch (Exception e) {
+            throw new HttpServiceException(response, $"Error decoding response of {context}", e, body);
+        }
+
+        response.Dispose();
+        return decoded;
     }
 
     async Task<T> HandleResponse<T>(HttpResponseMessage response, HttpOptions options) {
