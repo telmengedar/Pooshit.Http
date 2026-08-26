@@ -16,6 +16,11 @@ namespace Pooshit.Http;
 
 /// <inheritdoc />
 public class HttpService : IHttpService {
+    static readonly ISet<string> redirectExcludedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "Expect",
+        "Transfer-Encoding"
+    };
+
     readonly HttpClient client;
     readonly Random random = new();
         
@@ -79,6 +84,18 @@ public class HttpService : IHttpService {
     }
 #endif
         
+    static HttpRequestMessage CreateRedirectRequest(string url, HttpRequestMessage redirected) {
+        HttpRequestMessage request = new(HttpMethod.Get, url);
+        if (redirected != null)
+            foreach (KeyValuePair<string, IEnumerable<string>> header in redirected.Headers) {
+                if (redirectExcludedHeaders.Contains(header.Key))
+                    continue;
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+        return request;
+    }
+
     static string EncodeHeaderString (string input)
     {
         StringBuilder sb = new();
@@ -252,7 +269,7 @@ public class HttpService : IHttpService {
                 Uri requestUri = response.RequestMessage?.RequestUri;
                 string url = requestUri != null ? new Uri(requestUri, location).ToString() : location;
                 HttpResponseMessage previousResponse = response;
-                response = await SendRequest(await CreateRequest(url, HttpMethod.Get, options), options);
+                response = await SendRequest(CreateRedirectRequest(url, previousResponse.RequestMessage), options);
                 previousResponse.Dispose();
             }
             else if (response.StatusCode is HttpStatusCode.RedirectKeepVerb)

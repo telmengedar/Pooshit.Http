@@ -139,11 +139,8 @@ public interface IHttpService {
     Task<TResponse> Request<TBody, TResponse>(string method, string url, TBody body, HttpOptions options = null);
 
     /// <summary>
-    /// creates a request to be sent
+    /// creates a request to be sent, applying the request construction members of <paramref name="options"/>; customize the result and hand it to <see cref="Send{TResponse}"/> or <see cref="Send"/> to send it
     /// </summary>
-    /// <remarks>
-    /// this can be used to customize http request before sending it
-    /// </remarks>
     /// <param name="url">url to send request to</param>
     /// <param name="method">method to use</param>
     /// <param name="options">options for request (optional)</param>
@@ -151,16 +148,20 @@ public interface IHttpService {
     Task<HttpRequestMessage> CreateRequest(string url, HttpMethod method, HttpOptions options = null);
 
     /// <summary>
-    /// sends a request to the server
+    /// sends a caller-built request to the server; <paramref name="options"/> take effect from the send onwards, while the request construction members
+    /// <see cref="HttpOptions.TokenProvider"/>, <see cref="HttpOptions.Headers"/>, <see cref="HttpOptions.ExpectContinue"/>, <see cref="HttpOptions.MediaType"/>
+    /// and <see cref="HttpOptions.Encoder"/> are not applied to <paramref name="request"/> - build those in via <see cref="CreateRequest"/>
     /// </summary>
     /// <param name="request">request to send</param>
     /// <param name="options">options for request (optional)</param>
     /// <typeparam name="TResponse">type of response expected</typeparam>
     /// <returns>response from server</returns>
     Task<TResponse> Send<TResponse>(HttpRequestMessage request, HttpOptions options = null);
-        
+
     /// <summary>
-    /// sends a request to the server
+    /// sends a caller-built request to the server without reading a result; <paramref name="options"/> take effect from the send onwards, while the request construction members
+    /// <see cref="HttpOptions.TokenProvider"/>, <see cref="HttpOptions.Headers"/>, <see cref="HttpOptions.ExpectContinue"/>, <see cref="HttpOptions.MediaType"/>
+    /// and <see cref="HttpOptions.Encoder"/> are not applied to <paramref name="request"/>, and <see cref="HttpOptions.FollowRedirects"/> has no effect
     /// </summary>
     /// <param name="request">request to send</param>
     /// <param name="options">options for request (optional)</param>

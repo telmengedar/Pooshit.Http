@@ -3,7 +3,7 @@
     <PropertyGroup>
         <LangVersion>default</LangVersion>
         <PackageId>Pooshit.Http</PackageId>
-        <Version>0.9.0-preview</Version>
+        <Version>0.9.1-preview</Version>
         <Title>Pooshit.Http</Title>
         <Authors>Toni Gottschall</Authors>
         <Description>Library simplifying http request handling</Description>
