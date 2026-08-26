@@ -135,14 +135,14 @@ public class HttpServiceMediaTypeFallbackTests {
         yield return new TestCaseData("Application/JSON", jsonBody).SetName("Cased_JsonBody");
         yield return new TestCaseData(null, jsonBody).SetName("Absent_JsonBody");
         yield return new TestCaseData("text/javascript", "not json at all").SetName("Vendor_NonJsonBody");
-        yield return new TestCaseData("application/octet-stream", "").SetName("OctetStream_BinaryBody");
+        yield return new TestCaseData("application/octet-stream", "\u0001\u0002").SetName("OctetStream_BinaryBody");
         yield return new TestCaseData(null, "not json at all").SetName("Absent_NonJsonBody");
         yield return new TestCaseData("text/javascript", "{not valid json").SetName("Vendor_BraceButInvalidJson");
     }
 
     [TestCaseSource(nameof(EveryFallbackShape)), Parallelizable]
     [Description("S5: the deleted force-cast must be unreachable, so no invalid cast may surface from any dispatch outcome")]
-    public async Task ReadResponse_NoDispatchOutcome_SurfacesInvalidCastException(string? mediaType, string body) {
+    public async Task ReadResponse_NoDispatchOutcome_NeverSurfacesInvalidCastException(string? mediaType, string body) {
         using LoopbackServer server = new(mediaType, Encoding.UTF8.GetBytes(body));
 
         Exception? caught = null;
@@ -201,6 +201,7 @@ public class HttpServiceMediaTypeFallbackTests {
         yield return new TestCaseData("application/hal+json").SetName("SuffixJson");
         yield return new TestCaseData("application/vnd.acme.thing+json").SetName("VendorSuffixJson");
         yield return new TestCaseData("Application/JSON").SetName("CasedCanonical");
+        yield return new TestCaseData("Text/JSON").SetName("CasedTextJson");
         yield return new TestCaseData("APPLICATION/HAL+JSON").SetName("CasedSuffixJson");
     }
 
@@ -235,12 +236,12 @@ public class HttpServiceMediaTypeFallbackTests {
         Assert.That(exception.InnerException, Is.Null);
     }
 
-    [Test, Parallelizable]
-    [Description("a byte order mark still present after the string read is a leading artifact rather than body content, so the sniff must see past it to the json token and hand the body to the decoder")]
-    public void Get_ResidualByteOrderMarkBeforeJson_ReachesDecoderRatherThanBeingRefused() {
+    [TestCase("text/javascript"), TestCase("application/json"), Parallelizable]
+    [Description("a residual byte order mark is a leading artifact, not body content, so a body carrying one fails as a decode error on either path rather than being refused as non-json")]
+    public void Get_ResidualByteOrderMarkBeforeJson_FailsAsDecodeErrorOnEitherPath(string mediaType) {
         List<byte> body = [0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF];
         body.AddRange(Encoding.UTF8.GetBytes(jsonBody));
-        using LoopbackServer server = new("text/javascript", body.ToArray());
+        using LoopbackServer server = new(mediaType, body.ToArray());
         HttpService service = LoopbackService();
         string url = server.Url;
 
@@ -289,13 +290,15 @@ public class HttpServiceMediaTypeFallbackTests {
     }
 
     [Test, Parallelizable]
-    [Description("compatibility tail: a memory stream request still yields a memory stream but no longer carries the response body")]
-    public async Task Get_MemoryStreamRequestedUnderUnrecognisedMediaType_NoLongerCarriesBody() {
+    [Description("compatibility tail: the fallback decodes instead of handing back the body, so a memory stream request yields the decoder's empty stream exactly as the canonical json path already does")]
+    public async Task Get_MemoryStreamRequestedUnderUnrecognisedMediaType_ReturnsEmptyStreamFromDecoder() {
         using LoopbackServer server = new("text/javascript", Encoding.UTF8.GetBytes(jsonBody));
+        CountingDecoder decoder = new();
 
-        MemoryStream? result = await LoopbackService().Get<MemoryStream>(server.Url);
+        MemoryStream? result = await LoopbackService().Get<MemoryStream>(server.Url, new HttpOptions { Decoder = decoder });
 
-        Assert.That(Encoding.UTF8.GetString(result!.ToArray()), Is.Not.EqualTo(jsonBody));
+        Assert.That(decoder.Calls, Is.EqualTo(1));
+        Assert.That(result!.Length, Is.EqualTo(0));
     }
 
     [Test, Parallelizable]
