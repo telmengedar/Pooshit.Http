@@ -156,9 +156,9 @@ public class HttpServiceRedirectTests {
     }
 
     [Test, Parallelizable]
-    public async Task GetWithTokenProvider_AuthorizationHeader_ReachesBothHops() {
+    public async Task GetWithTokenProvider_SameOriginRedirect_AuthorizationReachesBothHops() {
         using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
-        redirect.Headers.Location = new Uri("https://other-host.example/target");
+        redirect.Headers.Location = new Uri("https://original-host.example/target");
 
         using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
 
@@ -284,5 +284,187 @@ public class HttpServiceRedirectTests {
         Assert.That(handler.Requests, Has.Count.EqualTo(2));
         Assert.That(HeaderValues(handler.Requests[0], "X-Multi-Marker"), Is.EqualTo(new[] { "first-header-value", "second-header-value" }));
         Assert.That(HeaderValues(handler.Requests[1], "X-Multi-Marker"), Is.EqualTo(new[] { "first-header-value", "second-header-value" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9619: a followed redirect must not hand the caller's token to a host the remote server named")]
+    public async Task GetWithTokenProvider_CrossOriginRedirect_AuthorizationIsStripped() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Get<string>("https://original-host.example/start",
+                                  new HttpOptions { FollowRedirects = true, TokenProvider = new CountingTokenProvider("url-overload-token") });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.Empty);
+    }
+
+    [Parallelizable]
+    [TestCase("https://original-host.example/start", "https://original-host.example/target", true)]
+    [TestCase("https://original-host.example/start", "https://other-host.example/target", false)]
+    [TestCase("https://original-host.example/start", "https://cdn.original-host.example/target", false)]
+    [TestCase("https://original-host.example/start", "https://original-host.example:8443/target", false)]
+    [TestCase("http://original-host.example/start", "https://original-host.example/target", false)]
+    [TestCase("http://original-host.example:8443/start", "https://original-host.example:8443/target", false)]
+    [Description("DiVoid #9633: an origin is scheme, host and port together, so a change in any one of them alone strips the credential")]
+    public async Task GetWithTokenProvider_Redirect_AuthorizationSurvivesOnlyWithinTheOrigin(string start, string location, bool kept) {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri(location);
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Get<string>(start,
+                                  new HttpOptions { FollowRedirects = true, TokenProvider = new CountingTokenProvider("url-overload-token") });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"),
+                    Is.EqualTo(kept ? new[] { "Bearer url-overload-token" } : Array.Empty<string>()));
+    }
+
+    [Test, Parallelizable]
+    public async Task GetWithTokenProvider_RelativeLocation_AuthorizationReachesBothHops() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("/target", UriKind.Relative);
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Get<string>("https://original-host.example/start",
+                                  new HttpOptions { FollowRedirects = true, TokenProvider = new CountingTokenProvider("url-overload-token") });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://original-host.example/target")));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9633: only the credential names leave the cross-origin hop, every other caller header still rides it")]
+    public async Task SendWithAuthorizationHeader_CrossOriginRedirect_CredentialIsStrippedWhileOtherHeadersSurvive() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer caller-token");
+        request.Headers.TryAddWithoutValidation("X-Caller-Marker", "caller-header-value");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
+        Assert.That(HeaderValues(handler.Requests[0], "X-Caller-Marker"), Is.EqualTo(new[] { "caller-header-value" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.Empty);
+        Assert.That(HeaderValues(handler.Requests[1], "X-Caller-Marker"), Is.EqualTo(new[] { "caller-header-value" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9633: the strip list is the public SensitiveHeaders set, so a name the caller adds is withheld from the hop and not merely redacted")]
+    public async Task SendWithCallerAddedSensitiveHeader_CrossOriginRedirect_IsStripped() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+        service.SensitiveHeaders.Add("X-Tenant-Secret");
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TryAddWithoutValidation("X-Tenant-Secret", "tenant-secret-value");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "X-Tenant-Secret"), Is.EqualTo(new[] { "tenant-secret-value" }));
+        Assert.That(HeaderValues(handler.Requests[1], "X-Tenant-Secret"), Is.Empty);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9633: a response stamped with no request uri leaves the origin unprovable, and unprovable strips even though the target is same-origin")]
+    public async Task SendWithAuthorizationHeader_UnprovableOrigin_CredentialIsStripped() {
+        HttpRequestMessage stampedWithoutUri = new();
+        stampedWithoutUri.Headers.TryAddWithoutValidation("Authorization", "Bearer caller-token");
+        stampedWithoutUri.Headers.TryAddWithoutValidation("X-Caller-Marker", "caller-header-value");
+
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { RequestMessage = stampedWithoutUri };
+        redirect.Headers.Location = new Uri("https://original-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final) { StampRequestMessage = false };
+        HttpService service = new(handler);
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer caller-token");
+        request.Headers.TryAddWithoutValidation("X-Caller-Marker", "caller-header-value");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://original-host.example/target")));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.Empty);
+        Assert.That(HeaderValues(handler.Requests[1], "X-Caller-Marker"), Is.EqualTo(new[] { "caller-header-value" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9646: a non-ASCII host keeps its case through Uri, so the origin comparison has to match it ignoring case")]
+    public async Task GetWithTokenProvider_HostDiffersOnlyByNonAsciiCase_AuthorizationReachesBothHops() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://\u00e4\u00f6\u00fc.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Get<string>("https://\u00c4\u00d6\u00dc.example/start",
+                                  new HttpOptions { FollowRedirects = true, TokenProvider = new CountingTokenProvider("url-overload-token") });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[0].RequestUri!.Host, Is.EqualTo("\u00c4\u00d6\u00dc.example"));
+        Assert.That(handler.Requests[1].RequestUri!.Host, Is.EqualTo("\u00e4\u00f6\u00fc.example"));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9646: a name removed from SensitiveHeaders rides the cross-origin hop, so the set is the sole authority and not a floor over hard-wired defaults")]
+    public async Task SendWithAuthorizationHeader_NameRemovedFromSensitiveHeaders_CredentialRidesCrossOriginHop() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+        service.SensitiveHeaders.Remove("Authorization");
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer caller-token");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].RequestUri!.Host, Is.EqualTo("other-host.example"));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
     }
 }
