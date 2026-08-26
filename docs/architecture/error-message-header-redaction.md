@@ -80,7 +80,7 @@ The membership rule: **a name is in the default list when its value is, by the h
 
 ### 3.4 Plumbing
 
-#8299 records the hazard: adding an option is a two-place change, and nothing is picked up automatically. Here the second place is `CheckHttpResponse`, which had no `options` parameter — it now takes one, and all nine call sites in `HttpService` pass the `options` already in scope. `DumpHeaders` gained the same parameter and delegates per-header rendering to a small `DumpHeader` helper, so the request-side and response-side loops cannot drift apart (they were already identical two-liners; the helper is what makes R5 hold on both sides by construction rather than by repetition).
+#8299 records the hazard: adding an option is a two-place change, and nothing is picked up automatically. Here the second place is `CheckHttpResponse`, which had no `options` parameter — it now takes one, and all eight call sites in `HttpService` pass the `options` already in scope. `DumpHeaders` gained the same parameter and delegates per-header rendering to a small `DumpHeader` helper, so the request-side and response-side loops cannot drift apart (they were already identical two-liners; the helper is what makes R5 hold on both sides by construction rather than by repetition).
 
 `Omitted` returns `string.Empty` from `DumpHeaders` rather than restructuring the two throw sites. The message becomes `Error sending request to '…' -> status 401\n\n{body}` — URL, status and body all intact, one blank line where the header block was.
 
@@ -132,4 +132,8 @@ Every route by which the same headers could reach the outside, with a verdict.
 
 The two duals #114 §13.1.1 requires are pinned explicitly: a non-sensitive header sent alongside a sensitive one must still be dumped verbatim (a filter that redacts everything would otherwise pass every token-is-gone assertion), and with the dump `Omitted` the URL, the status and `HttpServiceException.Body` must all survive. The `Omitted` test asserts first that the request genuinely carried the `Authorization` header — via `exception.Response.RequestMessage.Headers` — before asserting the message omits it, so the guard cannot pass by the scenario never arising.
 
-The full mutation table, with the failure signature of each of eleven independent mutations, is in the PR body.
+`CallMode_ReachesEveryOverloadThatValidatesStatus` fans a per-call `Full` across all fifteen public overloads that can reach `CheckHttpResponse`, because eight call sites is the axis most likely to be plumbed incompletely — #8299's "nothing is picked up automatically" hazard scales with the number of sites. `Post(url, options)` is deliberately absent from the fan: it is the one member that does not validate status at all, which is pre-existing behaviour pinned by `Post_NoBody_DoesNotValidateStatus`. The two `Send` cases carry the marker on the `HttpRequestMessage` rather than in `HttpOptions.Headers`, because `Send` takes a pre-built request and never runs `CreateRequest` — it honours the per-call mode but does not apply option headers.
+
+`EveryStatusCheckCallSiteNamesTheOptions` reads the source and asserts every `await CheckHttpResponse(` names `options`. The overload fan structurally cannot see an overload added later; this guard can.
+
+The full mutation table, with the failure signature of each of fifteen independent mutations, is in the PR body.

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using Http.Tests.TestSupport;
 using Pooshit.Http;
 
@@ -178,5 +180,74 @@ public class HttpServiceHeaderRedactionTests {
         Assert.That(exception.Message, Does.Contain("X-Api-Key"));
         Assert.That(exception.Message, Does.Contain("<redacted>"));
         Assert.That(exception.Message, Does.Not.Contain("apikey-topsecret"));
+    }
+
+    static string HttpServiceSourcePath([CallerFilePath] string testFilePath = "") {
+        string testDir = Path.GetDirectoryName(testFilePath)!;
+        return Path.GetFullPath(Path.Combine(testDir, "..", "Pooshit.Http", "HttpService.cs"));
+    }
+
+    static HttpRequestMessage MarkedRequest() {
+        HttpRequestMessage request = new(HttpMethod.Get, "https://example.test/probe");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer fanned-marker-token");
+        return request;
+    }
+
+    static IEnumerable<TestCaseData> StatusValidatingOverloads() {
+        const string url = "https://example.test/probe";
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Post<string, string>(url, "body", o))).SetName("Post_WithBodyAndResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Post<string>(url, o))).SetName("Post_NoBodyWithResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Post(url, "body", o))).SetName("Post_WithBodyNoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Put<string, string>(url, "body", o))).SetName("Put_WithResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Put(url, "body", o))).SetName("Put_NoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Patch<string, string>(url, "body", o))).SetName("Patch_WithResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Patch(url, "body", o))).SetName("Patch_NoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Get(url, o))).SetName("Get_NoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Get<string>(url, o))).SetName("Get_WithResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Delete(url, o))).SetName("Delete_NoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Delete<string>(url, o))).SetName("Delete_WithResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Request("PUT", url, "body", o))).SetName("Request_NoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Request<string, string>("PUT", url, "body", o))).SetName("Request_WithResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Send(MarkedRequest(), o))).SetName("Send_NoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Send<string>(MarkedRequest(), o))).SetName("Send_WithResult");
+    }
+
+    [TestCaseSource(nameof(StatusValidatingOverloads)), Parallelizable]
+    [Description("DiVoid #9117: CheckHttpResponse takes the options bag at eight call sites, so the per-call mode has to be pinned on every overload that can reach it")]
+    public void CallMode_ReachesEveryOverloadThatValidatesStatus(Func<HttpService, HttpOptions, Task> invoke) {
+        using HttpResponseMessage response = ErrorResponse();
+        HttpService service = new(new SequenceHandler(response));
+        HttpOptions options = Options(HeaderDumpMode.Full, Header("Authorization", "Bearer fanned-marker-token"));
+
+        HttpServiceException exception = Assert.ThrowsAsync<HttpServiceException>(() => invoke(service, options))!;
+
+        Assert.That(exception.Message, Does.Contain("Authorization: Bearer fanned-marker-token"));
+        Assert.That(exception.Message, Does.Not.Contain("<redacted>"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9117: an overload added later must not reach the status check without the options bag, which the overload fan cannot see")]
+    public void EveryStatusCheckCallSiteNamesTheOptions() {
+        string source = File.ReadAllText(HttpServiceSourcePath());
+        int callSites = Regex.Matches(source, @"await CheckHttpResponse\([^)]*\)").Count;
+        int callSitesNamingOptions = Regex.Matches(source, @"await CheckHttpResponse\([^)]*options[^)]*\)").Count;
+
+        Assert.That(callSites, Is.GreaterThanOrEqualTo(8));
+        Assert.That(callSitesNamingOptions, Is.EqualTo(callSites));
     }
 }

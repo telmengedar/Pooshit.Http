@@ -48,7 +48,7 @@ public class HttpService : IHttpService {
     public HeaderDumpMode HeaderDumpMode { get; set; } = HeaderDumpMode.Redacted;
 
     /// <summary>
-    /// names of headers whose values are replaced by a placeholder when headers are dumped in redacted mode; matched ignoring case and meant to be configured when the service is created
+    /// names of headers whose values are replaced by a placeholder when headers are dumped in redacted mode; matched ignoring case and not safe to mutate once the service has been used
     /// </summary>
     public ISet<string> SensitiveHeaders { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
         "Authorization",
