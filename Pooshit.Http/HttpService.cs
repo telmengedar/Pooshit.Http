@@ -53,7 +53,7 @@ public class HttpService : IHttpService {
     public HeaderDumpMode HeaderDumpMode { get; set; } = HeaderDumpMode.Redacted;
 
     /// <summary>
-    /// names of headers whose values are replaced by a placeholder when headers are dumped in redacted mode; matched ignoring case and not safe to mutate once the service has been used
+    /// names of headers treated as credentials: their values are replaced by a placeholder when headers are dumped in redacted mode, and they are not carried onto a redirect hop which leaves the origin; matched ignoring case and not safe to mutate once the service has been used
     /// </summary>
     public ISet<string> SensitiveHeaders { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
         "Authorization",
@@ -84,14 +84,27 @@ public class HttpService : IHttpService {
     }
 #endif
         
-    static HttpRequestMessage CreateRedirectRequest(string url, HttpRequestMessage redirected) {
+    static bool IsSameOrigin(Uri origin, Uri target) {
+        if (origin == null || target == null || !origin.IsAbsoluteUri || !target.IsAbsoluteUri)
+            return false;
+
+        return string.Equals(origin.Scheme, target.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(origin.Host, target.Host, StringComparison.OrdinalIgnoreCase)
+            && origin.Port == target.Port;
+    }
+
+    HttpRequestMessage CreateRedirectRequest(string url, HttpRequestMessage redirected) {
         HttpRequestMessage request = new(HttpMethod.Get, url);
-        if (redirected != null)
+        if (redirected != null) {
+            bool sameOrigin = IsSameOrigin(redirected.RequestUri, request.RequestUri);
             foreach (KeyValuePair<string, IEnumerable<string>> header in redirected.Headers) {
                 if (redirectExcludedHeaders.Contains(header.Key))
                     continue;
+                if (!sameOrigin && SensitiveHeaders.Contains(header.Key))
+                    continue;
                 request.Headers.TryAddWithoutValidation(header.Key, header.Value);
             }
+        }
 
         return request;
     }

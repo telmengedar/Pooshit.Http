@@ -3,10 +3,11 @@
     <PropertyGroup>
         <LangVersion>default</LangVersion>
         <PackageId>Pooshit.Http</PackageId>
-        <Version>0.9.1-preview</Version>
+        <Version>0.9.2-preview</Version>
         <Title>Pooshit.Http</Title>
         <Authors>Toni Gottschall</Authors>
         <Description>Library simplifying http request handling</Description>
+        <PackageReleaseNotes>0.9.2-preview - behaviour change: a followed redirect no longer carries the headers named in HttpService.SensitiveHeaders (Authorization, Cookie, Api-Key and the rest of the set) onto a hop whose target is not same-origin - scheme, host and port all compared - with the request that produced the redirect. A caller combining HttpOptions.FollowRedirects with a credential over a cross-origin redirect gets an unauthenticated hop, so a call that used to return 200 can now return 401 without throwing. Same-origin redirects, callers who do not opt into FollowRedirects, and cross-origin redirects carrying no credential are unaffected.</PackageReleaseNotes>
         <PackageTags>http</PackageTags>
         <Company></Company>
         <PackageLicenseFile>LICENSE</PackageLicenseFile>
