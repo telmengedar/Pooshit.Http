@@ -233,6 +233,7 @@ public class HttpServiceRedirectTests {
 
         Assert.That(handler.Requests, Has.Count.EqualTo(2));
         Assert.That(handler.Requests[0].Method.Method, Is.EqualTo("POST"));
+        Assert.That(handler.Requests[0].Content, Is.Not.Null);
         Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("GET"));
         Assert.That(handler.Requests[1].Content, Is.Null);
     }
