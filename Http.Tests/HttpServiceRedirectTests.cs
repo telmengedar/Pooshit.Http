@@ -263,4 +263,26 @@ public class HttpServiceRedirectTests {
         Assert.That(HeaderValues(handler.Requests[0], "X-Caller-Marker"), Is.EqualTo(new[] { "caller-header-value" }));
         Assert.That(handler.Requests[1].Headers, Is.Empty);
     }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9626: copying a header means copying every one of its values, not just the first")]
+    public async Task SendWithMultiValuedHeader_EveryValue_ReachesTheRedirectHop() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TryAddWithoutValidation("X-Multi-Marker", "first-header-value");
+        request.Headers.TryAddWithoutValidation("X-Multi-Marker", "second-header-value");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "X-Multi-Marker"), Is.EqualTo(new[] { "first-header-value", "second-header-value" }));
+        Assert.That(HeaderValues(handler.Requests[1], "X-Multi-Marker"), Is.EqualTo(new[] { "first-header-value", "second-header-value" }));
+    }
 }

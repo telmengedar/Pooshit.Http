@@ -49,7 +49,7 @@ The honoured/ignored split #9609 measured is not arbitrary, and it is not a coin
 | `HeaderDumpMode` | response handling | `DumpHeaders`, `:170` | honoured | honoured |
 | `FollowRedirects` | response handling | `HandleResponse`, `:246` | honoured | n/a — see below |
 | `UrlProcessor` | response handling | `HandleResponse`, `:249` | honoured | n/a — see below |
-| `Decoder` | typed read | `ReadResponse`, `:245`→`:222` | honoured | n/a — no body is read |
+| `Decoder` | typed read | `ReadResponse`, `:266`→`:225` | honoured | n/a — no body is read |
 
 **The hypothesis holds. `Send` is an escape hatch for *request construction* and a first-class member of the options surface for *everything after it*.** That is the answer to #9609's prerequisite, and it is a coherent contract rather than an accident of implementation: the caller who calls `Send` has supplied the request themselves, so options that describe how to build a request have nothing left to build; options that describe how to send it, how to read the answer, and how to report a failure are all still the service's job.
 
@@ -80,6 +80,8 @@ The docs live on `IHttpService` because `HttpService` carries `<inheritdoc />` t
 > **Correction 2026-08-26 (implementer, disclosed) — the container is `<summary>`, not `<remarks>`. The content above is unchanged.**
 >
 > Code Contracts #114 RULING 2026-08-08 denies `<remarks>` in new or modified code on any but Toni's explicit order. The rule the paragraphs above specify is a usage constraint the caller must honour, which that ruling places in the `<summary>`; it shipped there, naming `TokenProvider` first among the five. `CreateRequest`'s pre-existing `<remarks>` was folded into its `<summary>` under the same ruling's bring-to-contract-while-editing clause. Nothing about *what* is documented changed.
+>
+> **Also corrected 2026-08-26:** §3's `Decoder` row cited `:245`→`:222`; at this document's stated baseline `21152e4` those lines are the `HandleResponse` declaration and a `switch` brace. The read is at `:266` (`return await ReadResponse<T>(response, options?.Decoder);`) → `:225` (`decoder ??= new JsonDecoder();`), and the cell now says so. Every other citation in §3 was checked and is correct.
 
 ### 4.2 D2 — the redirect hop re-issues the previous request, it does not build a new one
 

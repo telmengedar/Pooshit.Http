@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,7 +21,7 @@ public class SequenceHandler : HttpMessageHandler {
     /// <summary>
     /// uri of every request the handler received, in order
     /// </summary>
-    public List<Uri?> RequestedUris { get; } = new();
+    public IReadOnlyList<Uri?> RequestedUris => Requests.Select(request => request.RequestUri).ToList();
 
     /// <summary>
     /// every request the handler received, in order
@@ -33,11 +34,8 @@ public class SequenceHandler : HttpMessageHandler {
     public bool StampRequestMessage { get; set; } = true;
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
-        RequestedUris.Add(request.RequestUri);
         Requests.Add(request);
         HttpResponseMessage response = responses.Dequeue();
-        // real handlers (SocketsHttpHandler etc.) stamp the originating request onto the
-        // response; HttpService relies on RequestMessage.RequestUri to resolve redirects
         if (StampRequestMessage)
             response.RequestMessage = request;
         return Task.FromResult(response);
