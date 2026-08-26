@@ -81,14 +81,18 @@ public class HttpServiceLengthGuardTests {
     }
 
     [Test, Parallelizable]
-    public void AbsentLengthEmptyBodyNoContentType_StreamingOption_ThrowsInvalidCast() {
+    public void AbsentLengthEmptyBodyNoContentType_StreamingOption_ThrowsDescriptiveException() {
         ProbeContent content = new([], declaresLength: false);
         using HttpResponseMessage response = new(HttpStatusCode.OK) { Content = content };
         SequenceHandler handler = new(response);
         HttpService service = new(handler);
 
-        Assert.ThrowsAsync<InvalidCastException>(() => service.Get<ProbeDto>("https://example.test/probe",
-            new HttpOptions { CompletionOption = HttpCompletionOption.ResponseHeadersRead }));
+        HttpServiceException? exception = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Get<ProbeDto>("https://example.test/probe",
+                                        new HttpOptions { CompletionOption = HttpCompletionOption.ResponseHeadersRead }));
+
+        Assert.That(exception!.Message, Does.Contain("<none>"));
+        Assert.That(exception.Message, Does.Contain(nameof(ProbeDto)));
     }
 
     [Test, Parallelizable]
