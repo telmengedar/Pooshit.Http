@@ -420,6 +420,7 @@ public class HttpService : IHttpService {
     /// <inheritdoc />
     public async Task Post(string url, HttpOptions options = null) {
         HttpResponseMessage response = await SendRequest(await CreateRequest(url, HttpMethod.Post, options), options);
+        await CheckHttpResponse(response, options);
         response.Dispose();
     }
 

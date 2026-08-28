@@ -200,6 +200,8 @@ public class HttpServiceHeaderRedactionTests {
         yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
             (s, o) => s.Post<string>(url, o))).SetName("Post_NoBodyWithResult");
         yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
+            (s, o) => s.Post(url, o))).SetName("Post_NoBodyNoResult");
+        yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
             (s, o) => s.Post(url, "body", o))).SetName("Post_WithBodyNoResult");
         yield return new TestCaseData(new Func<HttpService, HttpOptions, Task>(
             (s, o) => s.Put<string, string>(url, "body", o))).SetName("Put_WithResult");
@@ -228,7 +230,7 @@ public class HttpServiceHeaderRedactionTests {
     }
 
     [TestCaseSource(nameof(StatusValidatingOverloads)), Parallelizable]
-    [Description("DiVoid #9117: CheckHttpResponse takes the options bag at eight call sites, so the per-call mode has to be pinned on every overload that can reach it")]
+    [Description("DiVoid #9117: CheckHttpResponse takes the options bag at nine call sites, so the per-call mode has to be pinned on every overload that can reach it")]
     public void CallMode_ReachesEveryOverloadThatValidatesStatus(Func<HttpService, HttpOptions, Task> invoke) {
         using HttpResponseMessage response = ErrorResponse();
         HttpService service = new(new SequenceHandler(response));
@@ -247,7 +249,7 @@ public class HttpServiceHeaderRedactionTests {
         int callSites = Regex.Matches(source, @"await CheckHttpResponse\([^)]*\)").Count;
         int callSitesNamingOptions = Regex.Matches(source, @"await CheckHttpResponse\([^)]*options[^)]*\)").Count;
 
-        Assert.That(callSites, Is.GreaterThanOrEqualTo(8));
+        Assert.That(callSites, Is.GreaterThanOrEqualTo(9));
         Assert.That(callSitesNamingOptions, Is.EqualTo(callSites));
     }
 }

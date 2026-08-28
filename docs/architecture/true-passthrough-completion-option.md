@@ -282,7 +282,7 @@ Deliberately **after**, not a `using` around the whole body:
 - On the **failure** path validation throws, so the response is left exactly as it is today — the thrown exception's response object is not additionally disposed by this change, and `Body` (already captured as a string) is unaffected. **Zero change on the error path.**
 - On the **success** path the connection is released promptly. Nothing observable changes for the caller, which receives nothing.
 
-The one result-less member that does not validate status keeps not validating it (out of scope, §2.2); it simply disposes.
+The one result-less member that does not validate status keeps not validating it (out of scope, §2.2); it simply disposes. That member was the body-less `Post`, and #8317 has since made it validate like the rest, so the carve-out is history rather than current behaviour.
 
 ---
 
