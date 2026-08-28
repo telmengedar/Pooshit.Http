@@ -126,7 +126,18 @@ Segment matching converts an **enumeration problem into a vocabulary problem**. 
 
 **The part that holds on both, which is the part the rule depends on:** every **unreserved** escape decodes on both runtimes. Since every entry in the default set is pure ASCII letters, an encoded separator or an encoded letter can never hide a credential word on either runtime — `access%5Ftoken` and `to%6Ben` reach the rule as `access_token` and `token` everywhere. The limit that remains is an escape *inside* a credential word, and it holds on both for the same reason from opposite directions: `access_to%2Fken` renders as `access_to/ken` on Framework and as `access_to%2Fken` on .NET 8, and neither contains `token`.
 
-**One shape does diverge in outcome between the two runtimes, and it is recorded rather than closed.** Because Framework decodes `%26` and `%3D`, a name that encodes a **delimiter inside itself** is re-read as two parameters there. `?access_token%26x=SECRET` renders on .NET 8 as one parameter named `access_token%26x`, which contains `token` and is redacted; on Framework it renders as `?access_token&x=SECRET`, which §3.4 rule 4 splits into a valueless `access_token` and a parameter named `x`, whose value is not sensitive and **is printed**. This is a property of `Uri.ToString()` on that runtime, not of the matching rule — the raw `{RequestUri}` interpolation this design replaces decoded identically — and no writer produces that spelling. Recorded as a limit, not engineered around (#1136 §6). Note also that §6's percent-encoding case executes on **net8.0 only**, because the test project targets one framework while the package ships two; the Framework column above is measured, not pinned.
+**Two shapes diverge in outcome between the two runtimes, and they are recorded rather than closed.** Framework decodes `%26` and `%3D`, and doing so **relocates the name boundary** that §3.4 rule 4 computes — rule 3 splits the span at `&`, rule 4 ends the name at the first `=`. The divergence occurs exactly when that relocation moves the credential word *out of the name*, which depends on which side of the encoded delimiter the word sits. Measured on both runtimes, not reasoned about one:
+
+| Caller writes | .NET 8 | .NET Framework 4.8 |
+|---|---|---|
+| `?access_token%26x=SECRET` | redacted | renders `?access_token&x=SECRET`, which splits at `&` into a valueless `access_token` and a parameter named `x` — **printed** |
+| `?x%3Daccess_token=SECRET` | redacted | renders `?x=access_token=SECRET`, whose name ends at the first `=` and is therefore `x` — **printed** |
+| `?x%26access_token=SECRET` | redacted | redacted — the word lands in the second parameter's *name* |
+| `?access_token%3Dx=SECRET` | redacted | redacted — the word is still the whole name before the first `=` |
+
+So a `%26` encoded *after* the credential word strands it, and a `%3D` encoded *before* it does; the mirror spellings are unaffected. This is a property of `Uri.ToString()` on that runtime, not of the matching rule — the raw `{RequestUri}` interpolation this design replaces decoded identically and printed the whole string, so this can never print more than before — and no writer produces these spellings. Recorded as a limit, not engineered around (#1136 §6).
+
+The table was produced by rendering each URL on each runtime and feeding the rendered string through the library, which measures the Framework outcome faithfully because everything after `ToString()` is framework-independent string handling. §6's percent-encoding case nevertheless executes on **net8.0 only**, because the test project targets one framework while the package ships two (#9965); the Framework column is measured, not pinned.
 
 No decode step is introduced for any of this: the string being scanned is the same string being rendered (§3.4), and adding a decode pass would make matching operate on text the reader never sees.
 
@@ -148,7 +159,7 @@ The membership rule, borrowed intact from the header design: **a word is in the 
 
 `apikey` and `accesstoken` are not restored by the same argument, and the asymmetry is a judgement rather than a rule: removing `key` is a far larger and more obviously self-inflicted hole than removing `sig`, and `apikey` would rescue only names containing that exact run rather than a whole named vendor family.
 
-The consequence a caller must know is stated in §3.2: because `signature` is gone, removing `sig` removes signature coverage entirely rather than falling back to a longer entry.
+The consequence for a caller is the one D6a buys: removing `sig` — the entry whose collisions make it the most tempting to remove — leaves `signature` in the set, so `X-Amz-Signature`, `X-Goog-Signature` and the Azure SAS signature stay redacted. That is pinned by §6 case 7a rather than left to prose.
 
 **Two deliberate absences, both by the same rule:**
 
