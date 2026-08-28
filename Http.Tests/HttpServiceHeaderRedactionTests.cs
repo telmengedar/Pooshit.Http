@@ -182,6 +182,43 @@ public class HttpServiceHeaderRedactionTests {
         Assert.That(exception.Message, Does.Not.Contain("apikey-topsecret"));
     }
 
+    [Test, Parallelizable]
+    [Description("DiVoid #9702 leg 1: BynerApplicationService sends the vendor key under the unhyphenated name 'apiKey'")]
+    public void DefaultMode_ApiKeyHeaderUnhyphenated_KeepsNameDropsValue() {
+        using HttpResponseMessage response = ErrorResponse();
+        HttpService service = new(new SequenceHandler(response));
+
+        HttpServiceException exception = Capture(service, Options(null, Header("apiKey", "byner-vendor-key-topsecret")));
+
+        Assert.That(exception.Message, Does.Contain("apiKey"));
+        Assert.That(exception.Message, Does.Contain("<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("byner-vendor-key-topsecret"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9702 leg 1: ZvooveApi and ProsoftRecruitingApi send the vendor key under the unhyphenated name 'X-ApiKey'")]
+    public void DefaultMode_XApiKeyHeaderUnhyphenated_KeepsNameDropsValue() {
+        using HttpResponseMessage response = ErrorResponse();
+        HttpService service = new(new SequenceHandler(response));
+
+        HttpServiceException exception = Capture(service, Options(null, Header("X-ApiKey", "zvoove-vendor-key-topsecret")));
+
+        Assert.That(exception.Message, Does.Contain("X-ApiKey"));
+        Assert.That(exception.Message, Does.Contain("<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("zvoove-vendor-key-topsecret"));
+    }
+
+    [Test, Parallelizable]
+    [Description("the fix stays an exact-name match: a header that merely contains 'apikey' as a substring is not swept in")]
+    public void DefaultMode_HeaderNameContainingApiKeyAsSubstring_DumpedVerbatim() {
+        using HttpResponseMessage response = ErrorResponse();
+        HttpService service = new(new SequenceHandler(response));
+
+        HttpServiceException exception = Capture(service, Options(null, Header("X-ApiKeyId", "not-a-secret-id")));
+
+        Assert.That(exception.Message, Does.Contain("X-ApiKeyId: not-a-secret-id"));
+    }
+
     static string HttpServiceSourcePath([CallerFilePath] string testFilePath = "") {
         string testDir = Path.GetDirectoryName(testFilePath)!;
         return Path.GetFullPath(Path.Combine(testDir, "..", "Pooshit.Http", "HttpService.cs"));
