@@ -197,7 +197,7 @@ public class HttpServiceHeaderUrlRedactionTests {
     }
 
     [Test, Parallelizable]
-    [Description("DiVoid #9940: Link is deliberately outside the set because its RFC 8288 syntax is not a bare url, so its value is dumped whole; the case above shows what adding it without a parser would cost")]
+    [Description("DiVoid #9940: Link is deliberately outside the set because its RFC 8288 syntax is not a bare url, so its value is dumped whole")]
     public void LinkHeader_CarryingACredential_DumpedVerbatim() {
         HttpServiceException exception = CaptureResponseHeader("Link", "<https://api.test/next?access_token=visiblevalue>; rel=\"next\"");
 
