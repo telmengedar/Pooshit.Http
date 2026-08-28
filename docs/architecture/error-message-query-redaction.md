@@ -79,33 +79,43 @@ All four sites stop interpolating `RequestUri` and instead render `{DumpUrl(resp
 
 **Two members, not one.** `DumpUrl` performs the rewrite; a second private predicate answers *is this parameter name a credential name*. This mirrors `DumpHeaders`/`DumpHeader` — collection helper over item predicate — and separates the **policy** (which names are credentials) from the **rendering** (how the URL is rebuilt), so the policy is testable on its own and the rewrite loop stays readable. The inline-it check (#1136 §4) was run: inlining costs ~6 lines inside a loop and merges two concerns that change for different reasons.
 
-### 3.2 How a name is matched — segment matching, and why not exact-name
+### 3.2 How a name is matched — plain substring, and why not segmentation or exact-name
 
-**A query parameter is sensitive when any *segment* of its name is in the set.** A segment boundary occurs at every character that is neither a letter nor a digit, and between a lower-case letter immediately followed by an upper-case one. A name with no boundary is its own single segment. Matching is case-insensitive, supplied by the set's comparer.
+**A query parameter is sensitive when its name *contains* any entry of the set.** No splitting, no word boundary, no anchor at either end: the entry may sit leading, medial or trailing, beside digits, beside punctuation, or inside a longer run of letters. Matching ignores case, supplied by `StringComparison.OrdinalIgnoreCase` at the comparison itself; the set's own `OrdinalIgnoreCase` comparer governs what a consumer's `Add` and `Remove` reach.
 
-| Parameter name | Segments | Verdict |
+| Parameter name | Entry found | Verdict |
 |---|---|---|
-| `access_token` | `access`, `token` | redacted |
-| `X-Amz-Signature` | `X`, `Amz`, `Signature` | redacted |
-| `X-Amz-Security-Token` | `X`, `Amz`, `Security`, `Token` | redacted |
-| `AWSAccessKeyId` | `AWSAccess`, `Key`, `Id` | redacted |
-| `apiKey` | `api`, `Key` | redacted |
-| `apikey` | `apikey` | redacted (the concatenated form ships in the set) |
-| `sig` | `sig` | redacted |
-| `client_secret` | `client`, `secret` | redacted |
-| `sortkey` | `sortkey` | **kept verbatim** |
-| `keyword` | `keyword` | **kept verbatim** |
-| `author` | `author` | **kept verbatim** |
+| `access_token` | `token`, trailing | redacted |
+| `access_token_v2` | `token`, medial | redacted |
+| `token_id` | `token`, leading | redacted |
+| `X-Amz-Signature` | `sig` | redacted |
+| `X-Amz-Security-Token` | `token` | redacted |
+| `AWSAccessKeyId` | `key` | redacted |
+| `apiKey` | `key`, ignoring case | redacted |
+| `apikey` | `key` | redacted |
+| `apikey2` | `key`, beside a digit | redacted |
+| `accesskey` · `authtoken` · `secretkey` · `apitoken` | `key` / `token` | redacted |
+| `client_secret` | `secret` | redacted |
+| `sortkey` · `monkey` · `keyword` | `key` | **redacted — over-redaction, accepted below** |
+| `author` | `auth` | **redacted — over-redaction, accepted below** |
+| `assignee` · `design` | `sig` | **redacted — over-redaction, accepted below** |
+| `page` · `limit` · `filter` · `format` | none | kept verbatim |
 
 **Rejected: exact-name matching (the `SensitiveHeaders` rule transplanted).** Its failure mode, stated because the audit requires it: an unanticipated vendor spelling leaks **silently**. `SensitiveHeaders` can be exact because the header namespace has a registry and eight names exhaust it; the query namespace has none. Concretely, exact-name matching misses the single most common way a credential ends up in a URL — the pre-signed object-store URL. `X-Amz-Signature`, `X-Amz-Credential`, `X-Amz-Security-Token`, `AWSAccessKeyId`, `X-Goog-Signature` would each have to be enumerated, and Azure's SAS spells it `sig`. That shape is not hypothetical in this repo: the redirect design (#9633 §2.3) already reasons about it by name — *"a storage or CDN handoff answers with a pre-signed URL that carries its own authorisation in the query string."* Enumerating vendor query names would be a permanent maintenance surface for a namespace that has no registry — the same argument #9633 used to reject a public-suffix list.
 
 Segment matching converts an **enumeration problem into a vocabulary problem**. Names are unbounded and vendor-specific; the words vendors build them out of are few and closed.
 
-**Rejected: plain substring matching (mamgo PR #895's rule — `key`, `api[_-]?key`, `access[_-]?token`).** #895 reached for substrings for the right reason — it could not enumerate the names either — and pays for it by redacting a benign `sortkey` or `keyword`. Anchoring at segment boundaries keeps everything #895's anchors caught (`access_token`, `api_key`, `apiKey`, `X-Client-AccessToken`) while leaving `sortkey`, `keyword` and `monkey` legible, which R3 asks for. Segment matching dominates plain substring on both axes; there is no trade here, only a stricter boundary.
+**Rejected: segment matching — tried, shipped in the first revision of this branch, and withdrawn.** The rule was *"a parameter is sensitive when any segment of its name is in the set"*, splitting at every non-alphanumeric character and at each lower-to-upper camel-case transition. It was chosen for precision and it delivers precision; it was also claimed here to *"dominate plain substring on both axes"* and to *"keep everything #895's anchors caught"*, and **both claims were false**. Segment matching loses recall on the all-lowercase concatenated compound, which has no boundary to split at: `secretkey`, `accesskey`, `authtoken`, `apitoken`, `bearertoken`, `privatekey`, `sessionkey`, `apikey2` and `key2` all rendered **verbatim** under it, and #895's substring `key` caught three of them. The set was patched once already to cover this shape — `apikey` and `accesstoken` shipped as whole-name entries precisely because no boundary reached them — and that patch is the tell: the rule had been converted back into the enumeration problem it existed to escape, one compound at a time, with every unanticipated compound failing **silently**. Withdrawn for that reason, not for a preference.
 
-**Accepted cost, named rather than papered over.** `key` is the widest-scoped entry in the default set and it is not optional — Google's APIs authenticate with a bare `?key=`, the single most widespread credential-in-query parameter on the web. The price is that `partition_key`, `sort_key`, `idempotency_key` and `public_key` all render `<redacted>`. That is over-redaction, which costs a diagnostic; the alternative is under-redaction, which costs a credential — and a caller can *see* and close an over-redaction (`SensitiveQueryParameters.Remove("key")`) while an under-redaction is invisible by construction. Wrong in the safe direction, deliberately.
+**No rule separates `secretkey` from `sortkey` without enumerating one of them.** This was looked for before accepting the cost below. The two names are structurally identical — a four-or-five letter run followed by `key`, no boundary, no case signal, no digit — and they differ only in that `secret` denotes a credential and `sort` does not. Every candidate collapses: an end-anchor matches both, a start-anchor matches `keyword` and neither of these, a decomposition rule splits `monkey` into `mon` + `key` as readily as `sortkey` into `sort` + `key`, and a rule that asks whether the *remainder* is a word needs a dictionary, which is enumeration with extra steps and a larger surface. The distinction is semantic, and the design has no semantics available. There is therefore a genuine trade here, and it is settled in the paragraph below rather than dissolved.
 
-**Accepted limit.** A parameter name that is still percent-encoded in the rendered URL (`access%5Ftoken`) segments to `access`, `5`, `Ftoken` and is missed. No decode step is introduced for it: the string being scanned is the same string being rendered (§3.4), and adding a decode pass would make matching operate on text the reader never sees. Encoding a parameter *name* is legal but unattested here; a caller who meets one adds the encoded spelling to the set. Recorded as a limit, not engineered around (#1136 §6).
+**Accepted cost, named rather than papered over: this rule over-redacts.** `sortkey`, `monkey`, `keyword`, `partition_key`, `sort_key`, `idempotency_key` and `public_key` all render `<redacted>` through `key`; `author` and `authority` through `auth`; `assignee`, `design`, `resign` and `consignment` through `sig`. `key` and `sig` are the two widest entries and neither is optional — Google's APIs authenticate with a bare `?key=` and Azure Storage SAS signs with a bare `?sig=`, the two most widespread credential-in-query parameters on the web. The cost is a **diagnostic**, and it is **visible**: an investigator reading `?keyword=<redacted>` can see exactly what happened and why. Under-redaction costs a **credential**, and it is invisible by construction — nothing in a log announces the value that was printed in full. The asymmetry is the whole argument, and it points one way.
+
+**The knob a caller has for that cost is coarse, and that is a limit rather than a feature.** The only remedy for an unwanted redaction is `SensitiveQueryParameters.Remove(entry)`, and an entry is broad: removing `key` to make `?keyword=` legible also stops `secretkey`, `accesskey` and `AWSAccessKeyId` being redacted, and removing `sig` to make `?design=` legible drops `X-Amz-Signature` and the Azure SAS `sig` with it. A caller who removes `sig` and still wants signatures covered adds `signature` back explicitly. No per-name exclusion list is introduced for this: it would be a second enumeration surface with no named consumer (#1136 §6, YAGNI), and unlike the matching set it would fail in the under-redaction direction when it drifted.
+
+**The percent-encoding limit the first revision recorded does not exist, and saying so is the point.** That revision stated: *"a parameter name that is still percent-encoded in the rendered URL (`access%5Ftoken`) segments to `access`, `5`, `Ftoken` and is missed."* The premise is false — the name is never still percent-encoded at that point. `DumpUrl` reads `RequestUri.ToString()`, and `Uri` normalises **unreserved** escapes (`ALPHA` / `DIGIT` / `-` `.` `_` `~`) back to their characters when it renders. A request built with `?access%5Ftoken=` renders as `?access_token=` and a request built with `?api%2Dkey=` renders as `?api-key=`, both verified end to end. The escaped spelling never reaches the matching rule under either rule, so the limit was never load-bearing and the advice it gave — *"a caller who meets one adds the encoded spelling to the set"* — would not have worked, because the encoded spelling is not what the rule is shown.
+
+**What is left of it is narrow enough to state exactly.** An escape survives rendering only when it encodes a character outside the unreserved set, and every entry in the default set is pure ASCII letters. So the only spelling that can still break a credential word is a **reserved** character encoded *inside* the word — `access_to%2Fken`, a slash in the middle of a parameter name. That is not a spelling any writer produces. No decode step is introduced for it: the string being scanned is the same string being rendered (§3.4), and adding a decode pass would make matching operate on text the reader never sees. Recorded as a limit, not engineered around (#1136 §6).
 
 ### 3.3 The public surface — `HttpService.SensitiveQueryParameters`
 
@@ -113,11 +123,15 @@ A get-only `ISet<string>` backed by a `HashSet<string>` with `StringComparer.Ord
 
 **Naming (#6836).** The library's own vocabulary for this thing is `QueryParameter` with a `Name` (`Paths/QueryParameter.cs`), and Toni's words are *"query string keys"*. `SensitiveQueryParameters` is the repo's real name for the real structure, and parallels `SensitiveHeaders` — both read as *names of X treated as credentials*.
 
-**The default set — ten entries, all credential words rather than parameter names:**
+**The default set — seven entries, all credential words rather than parameter names:**
 
-`token` · `key` · `apikey` · `accesstoken` · `secret` · `password` · `signature` · `sig` · `auth` · `credential`
+`token` · `key` · `secret` · `password` · `sig` · `auth` · `credential`
 
-The membership rule, borrowed intact from the header design: **a word is in the default set when a parameter whose name contains it is, by that word's own meaning, a credential — not merely correlated with one.** `apikey` and `accesstoken` are in the set as *whole-name* entries: they carry no segment boundary, so `key` and `token` do not reach them.
+The membership rule, borrowed intact from the header design: **a word is in the default set when a parameter whose name contains it is, by that word's own meaning, a credential — not merely correlated with one.**
+
+**A second rule follows from substring matching: no entry may contain another entry.** An entry that carries a shorter entry inside it can never produce a match the shorter one did not already produce, so it contributes nothing and misdescribes the rule to anyone reading the set. Three entries were removed on this ground when segmentation was withdrawn — `apikey` and `accesstoken`, which existed only to reach compounds that `key` and `token` now reach directly, and `signature`, which `sig` subsumes. Each removal is pinned by a probe: re-adding any of the three leaves the suite green, which is the evidence that it is dead membership rather than an argument that it is.
+
+The consequence a caller must know is stated in §3.2: because `signature` is gone, removing `sig` removes signature coverage entirely rather than falling back to a longer entry.
 
 **Two deliberate absences, both by the same rule:**
 
@@ -153,7 +167,7 @@ Every member but the default fails, so the enum is a knob over a one-valued spac
 
 **Rejected: parse the query into a name/value collection and re-serialise it** (`HttpUtility.ParseQueryString` or equivalent — available here, since `Paths/QueryParameters.cs` already uses `System.Web` on both target frameworks). Its failure mode is that **the logged URL stops being the URL that was sent**: a decode/re-encode round-trip normalises `+` against `%20`, collapses repeated names into comma-joined values, drops an empty trailing parameter, and re-escapes reserved characters by its own rules. An investigator comparing a logged URL against a vendor's access log would be comparing two different strings. A diagnostic that silently rewrites the thing it is diagnosing is worse than a coarser one that does not.
 
-**R6 falls out by construction, not by a fallback branch.** There is no parse step, therefore no unparseable case. A relative URI, a URI with no authority, a malformed query, a bare `?`, a `#` before any `&` — all take the same textual path, and any piece the rules cannot resolve into a name/value pair is emitted with no value replaced only because it *has* no value. The one shape that could hide a value from the rules — a parameter whose separator is not `&` — hides it from every reader too. **Unparseable never means unredacted, because nothing is parsed** (#1136 §6: no defensive branch for a case the design's own shape has already answered).
+**R6 falls out by construction, not by a fallback branch.** There is no parse step, therefore no unparseable case. A relative URI, a URI with no authority, a malformed query, a bare `?`, a `#` before any `&` — all take the same textual path, and any piece the rules cannot resolve into a name/value pair is emitted with no value replaced only because it *has* no value. The one shape that hides a value from the rules is a parameter whose separator is not `&`: in `?a=1;access_token=x` the whole tail is read as the value of `a`, whose name matches nothing, so the token is rendered verbatim. That is a real leak and it is recorded as a limit rather than defended — HTML 4.01 B.2.2 once recommended `;` as an alternative separator, so it is not unattested, though it is long deprecated and this library itself only ever emits `&` (`Paths/QueryParameters.cs:153`). Closing it would mean splitting on a separator set the sender did not use, which changes what a benign value renders as; the trade was judged not worth taking for a separator no current writer emits. **Unparseable never means unredacted, because nothing is parsed** (#1136 §6: no defensive branch for a case the design's own shape has already answered).
 
 ### 3.5 The body — one throw instead of two
 
@@ -181,7 +195,7 @@ Nothing else in the method moves: the status band, the stream read, and the `bod
 
 ## 5. Decisions
 
-**D1 — segment matching over exact-name.** §3.2. Rejected alternative's failure mode: a silent miss of the pre-signed-URL family, which is the most common credential-in-query shape and one this repo has already reasoned about by name. Reversal cost: cheap — the predicate is one private member.
+**D1 — plain substring matching over segment matching and over exact-name.** §3.2. Segment matching was implemented first on this branch and withdrawn: it loses recall on all-lowercase concatenated compounds (`secretkey`, `accesskey`, `authtoken`, `apitoken`) with no boundary to split at, and each miss is silent. Exact-name matching fails worse and for the same reason — a silent miss of the pre-signed-URL family, the most common credential-in-query shape and one this repo has already reasoned about by name. The accepted price of substring matching is over-redaction of `sortkey`, `keyword`, `monkey`, `author`, `assignee` and `design`, which is a visible diagnostic loss rather than a silent credential loss; no rule separating those from `secretkey` exists without enumerating one side (§3.2). Reversal cost: cheap — the predicate is one private member and one expression, and the segmentation form is recorded above in full.
 
 **D2 — the set is separate from `SensitiveHeaders`, and this is the one decision that would be actively harmful to get wrong.** Since PR #7, `SensitiveHeaders` governs **two** behaviours: error-message redaction *and* the cross-origin redirect strip (#9633 §2.2, map #9617). A word added there for query redaction — `token`, `key`, `auth`, `sig` — would silently change what travels to a redirect target, a security decision taken under a different trade-off (the *asymmetry of forgetting*, which weighed a leaked log line against a leaked credential and concluded that one list should govern both). Reusing it here would additionally import a **second matching rule** into that decision, since query names match per segment and header names match exactly. Two lists, two names, no cross-talk — and §6 pins the absence of cross-talk in both directions.
 
@@ -217,11 +231,28 @@ New file `Http.Tests/HttpServiceQueryRedactionTests.cs`, following `HttpServiceH
 | 1 | `?access_token=…` on a failing call: the name is present, the value is absent, `<redacted>` is present | the fix (R2, R5) |
 | 2 | **Dual —** a non-sensitive parameter beside it keeps its value **verbatim** | R3. Without it, an implementation that redacts the whole query passes every token-is-gone assertion |
 | 3 | **Dual —** scheme, host, path and the status still appear in the message | R3. Without it, dropping the query wholesale passes cases 1 and 2 |
-| 4 | `[TestCase]` fan: `access_token`, `X-Amz-Signature`, `X-Amz-Security-Token`, `AWSAccessKeyId`, `apiKey`, `apikey`, `key`, `sig`, `client_secret` — all redacted | D1's coverage claim, entry by entry |
-| 5 | **Dual —** `[TestCase]` fan: `sortkey`, `keyword`, `monkey`, `author` — all **kept verbatim** | D1 against a plain-substring implementation, which passes every other case in this table and fails only here |
-| 6 | `?ACCESS_TOKEN=…` redacted | case-insensitivity is a property of the set's comparer |
-| 7 | A caller-added entry (`vendorsecret`) is redacted; a caller-removed entry (`key`) is kept | R4, and that the set is the source of truth rather than a hard-coded list |
+| 4 | `[TestCase]` fan: `access_token`, `X-Amz-Signature`, `X-Amz-Security-Token`, `X-Amz-Credential`, `AWSAccessKeyId`, `apiKey`, `key`, `sig`, `client_secret`, `password`, `x_auth` — all redacted | D1's coverage claim, entry by entry |
+| 5 | **Dual —** `[TestCase]` fan: `sortkey`, `keyword`, `monkey`, `author`, `assignee`, `design` — all **redacted** | D1's accepted cost. Restoring a word boundary fails here rather than passing quietly, which is how the withdrawn segmentation rule is kept out |
+| 6 | `?ACCESS_TOKEN=…` redacted | case-insensitivity of the name comparison |
+| 7 | A caller-added entry (`vendorsecret`) is redacted; a caller-removed entry (`key`) is kept; a **cleared** set redacts nothing | R4, and that the set is the source of truth rather than a hard-coded list |
 | 8 | **Separateness, both directions.** A name added only to `SensitiveHeaders` (`X-Tenant-Marker`) used as a *query* parameter stays verbatim; a word added only to `SensitiveQueryParameters` (`tenantmarker`) used as a *header* name stays verbatim in the dump | D2. This is the guard against a future edit quietly merging the two sets |
+
+### 6.1.1 The predicate's axes, enumerated (#114 §13.1.1)
+
+The matching rule is `∃ entry ∈ set : name contains entry, ignoring case`. Its inputs are exactly three — the **name**, the **set**, and the **comparison mode** — so the axis list below is complete by construction: the name varies by where a match sits, by case, by adjacent digits, by adjacent punctuation, and by whether it matches at all; the set varies by membership and by the casing a consumer reaches it with; the comparison varies by case-sensitivity. Every axis carries at least one case whose mutation is red.
+
+| Axis | Cases | Mutation it kills |
+|---|---|---|
+| Position of the match in the name | `token_id` (leading), `access_token_v2`, `x_key_1`, `v4_signature` (medial), `access_token` (trailing) | anchoring the match at either end of the name; matching only a final segment |
+| Case of the name | `ACCESS_TOKEN`, `apiKey`, `AWSAccessKeyId` | `OrdinalIgnoreCase` relaxed to `Ordinal` |
+| Case of a consumer's entry | `Add("VENDORSECRET")` matches `vendorsecret`; `Remove("KEY")` reaches the shipped `key` | a comparison that folds only the name; the set's own comparer relaxed to `Ordinal` |
+| Digits adjacent to the match | `key2`, `apikey2`, `sig1`, `signature_v4` | any rule treating a digit as part of a word boundary |
+| Punctuation adjacent to the match, and its absence | `access_token`, `x_auth`, `client_secret` against `accesskey`, `authtoken`, `secretkey`, `apitoken`, `bearertoken`, `privatekey`, `sessionkey` | the withdrawn segmentation rule, which leaves every name in the second group legible |
+| Percent-encoded separator inside the name | `access%5Ftoken` renders and redacts as `access_token`; `api%2Dkey` as `api-key` | the withdrawn limit above, by pinning that `Uri` renders the decoded form the rule actually sees |
+| Whether the name matches at all | `page`, `limit`, `offset`, `filter`, `id`, `format` | redact-everything |
+| Set-drivenness | added entry; removed entry; cleared set | a hard-coded fallback list; a constant predicate in either direction |
+| Which text is matched | `?page=tokenholder&filter=secretsauce` stays verbatim | matching the whole `name=value` pair instead of the name, which would make redaction depend on value content (D3) |
+| A name with no letters | `?=v`, `?--=v`, `?_=v` | a fault or a spurious match on an empty or punctuation-only name |
 
 ### 6.2 The rules §3.4 states, one case each
 
@@ -233,6 +264,7 @@ New file `Http.Tests/HttpServiceQueryRedactionTests.cs`, following `HttpServiceH
 | 12 | `?access_token=x#fragment` | the fragment is outside the query span and survives verbatim |
 | 13 | Two sensitive parameters and one benign, in one query | both redacted, order and separators preserved |
 | 14 | A URL with **no** query at all | rendered byte-identically to today |
+| 14a | `?sig=x&q=a?b` | the query span starts at the **first** `?`; a later one inside a value does not move it and leave the credential ahead of it verbatim |
 
 ### 6.3 All four sites, and the fifth site that does not exist yet
 
@@ -247,9 +279,12 @@ New file `Http.Tests/HttpServiceQueryRedactionTests.cs`, following `HttpServiceH
 
 | # | Guard | Assertion |
 |---|---|---|
-| 19 | `EveryUrlInAMessageGoesThroughTheRedactor` — a source-reading guard over `HttpService.cs`, modelled directly on the existing `EveryStatusCheckCallSiteNamesTheOptions` | **No interpolated string in the file names `RequestUri`** (zero matches for an interpolation hole containing it), **and** `DumpUrl(response)` appears in at least four interpolation holes |
+| 19 | `EveryUrlInAMessageGoesThroughTheRedactor` — a source-reading guard over `HttpService.cs`, modelled directly on the existing `EveryStatusCheckCallSiteNamesTheOptions` | **No interpolated string in the file names `RequestUri`** (zero matches for an interpolation hole containing it), **and** `DumpUrl(response)` appears in at least three interpolation holes |
+| 19a | `SourceCarriesNoLiteralShapeTheScannerCannotRead` | the file contains no raw string interpolation (`$"""`), which case 19's scanner cannot parse |
 
-Case 19 is R7 and it is the one case the fan cannot supply: an overload or a message site added next year is structurally invisible to a hand-written fan and visible to this guard. The guard's own limit, stated because guards catch only the shape they name: it sees single-line interpolated strings, which is what all four sites are today.
+Case 19 is R7 and it is the one case the fan cannot supply: an overload or a message site added next year is structurally invisible to a hand-written fan and visible to this guard.
+
+**The scanner's literal grammar, and why case 19a exists.** The guard reads interpolated literals with a regular expression, and a regular expression cannot parse C# string literals in general. The one it uses accepts the `$"…"`, `$@"…"` and `@$"…"` forms, tolerates an escaped `\"` and a verbatim `""`, and spans newlines, so a message site written in any of those shapes is seen. It cannot read a **raw** string literal (`$"""…"""`), whose delimiter length is variable — so rather than leave that as a silent blind spot in which case 19 would keep reporting success, case 19a fails the moment one appears in the file, and the remedy is to widen the scanner deliberately. The narrower predecessor of this scanner (`\$"[^"\n]*"`, single-line and quote-free) was verified to miss a `$@"…{RequestUri}…"` site and a multi-line one entirely; both are caught now, and both misses are recorded in the mutation matrix as the negative proof (#275) that the widening is load-bearing.
 
 ### 6.4 The body
 

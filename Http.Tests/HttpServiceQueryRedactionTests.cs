@@ -54,8 +54,8 @@ public class HttpServiceQueryRedactionTests {
         Assert.That(exception.Message, Does.Contain("Unauthorized"));
     }
 
-    [TestCase("access_token"), TestCase("accesstoken"), TestCase("X-Amz-Signature"), TestCase("X-Amz-Security-Token")]
-    [TestCase("X-Amz-Credential"), TestCase("AWSAccessKeyId"), TestCase("apiKey"), TestCase("apikey")]
+    [TestCase("access_token"), TestCase("X-Amz-Signature"), TestCase("X-Amz-Security-Token")]
+    [TestCase("X-Amz-Credential"), TestCase("AWSAccessKeyId"), TestCase("apiKey")]
     [TestCase("key"), TestCase("sig"), TestCase("client_secret"), TestCase("password"), TestCase("x_auth")]
     [Parallelizable]
     public void CredentialWordInParameterName_ValueRedacted(string parameterName) {
@@ -65,12 +65,86 @@ public class HttpServiceQueryRedactionTests {
         Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
     }
 
-    [TestCase("sortkey"), TestCase("keyword"), TestCase("monkey"), TestCase("author"), Parallelizable]
-    [Description("DiVoid #9938: a plain substring rule passes every other case in this fixture and fails only here")]
-    public void CredentialWordInsideALongerWord_ValueKeptVerbatim(string parameterName) {
+    [TestCase("token_id"), TestCase("access_token_v2"), TestCase("x_key_1"), TestCase("v4_signature")]
+    [TestCase("access_token"), Parallelizable]
+    [Description("DiVoid #9938: the word sits leading, medial and trailing across these names, so a rule anchored at either end of the name fails here")]
+    public void CredentialWordAtAnyPositionInName_ValueRedacted(string parameterName) {
+        HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=topsecretvalue");
+
+        Assert.That(exception.Message, Does.Contain($"{parameterName}=<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
+    }
+
+    [TestCase("accesskey"), TestCase("authtoken"), TestCase("secretkey"), TestCase("apitoken")]
+    [TestCase("bearertoken"), TestCase("privatekey"), TestCase("sessionkey"), TestCase("apikey")]
+    [TestCase("accesstoken"), Parallelizable]
+    [Description("DiVoid #9938: these carry no separator and no camel case boundary, so a rule that splits the name into words leaves every one of them legible")]
+    public void ConcatenatedCredentialCompound_ValueRedacted(string parameterName) {
+        HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=topsecretvalue");
+
+        Assert.That(exception.Message, Does.Contain($"{parameterName}=<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
+    }
+
+    [TestCase("key2"), TestCase("apikey2"), TestCase("sig1"), TestCase("signature_v4"), Parallelizable]
+    [Description("DiVoid #9938: a digit beside the word neither creates nor removes a match, which a rule treating digits as part of a word boundary gets wrong")]
+    public void CredentialWordBesideDigits_ValueRedacted(string parameterName) {
+        HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=topsecretvalue");
+
+        Assert.That(exception.Message, Does.Contain($"{parameterName}=<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
+    }
+
+    [TestCase("sortkey"), TestCase("keyword"), TestCase("monkey"), TestCase("author")]
+    [TestCase("assignee"), TestCase("design"), Parallelizable]
+    [Description("DiVoid #9938: over redacting a benign word that carries a credential word is the accepted cost of the rule, so restoring a word boundary fails here instead of passing quietly")]
+    public void BenignWordCarryingACredentialWord_ValueRedacted(string parameterName) {
+        HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=visiblevalue");
+
+        Assert.That(exception.Message, Does.Contain($"{parameterName}=<redacted>"));
+    }
+
+    [TestCase("page"), TestCase("limit"), TestCase("offset"), TestCase("filter")]
+    [TestCase("id"), TestCase("format"), Parallelizable]
+    [Description("DiVoid #9938: an implementation that redacts every query value passes every credential case in this fixture and fails only here")]
+    public void ParameterWithNoCredentialWord_ValueKeptVerbatim(string parameterName) {
         HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=visiblevalue");
 
         Assert.That(exception.Message, Does.Contain($"{parameterName}=visiblevalue"));
+    }
+
+    [TestCase(""), TestCase("--"), TestCase("_"), Parallelizable]
+    [Description("DiVoid #9938: a name carrying no letters matches nothing and keeps its value, rather than faulting on an empty or punctuation only name")]
+    public void NameWithoutLetters_ValueKeptVerbatim(string parameterName) {
+        HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=visiblevalue");
+
+        Assert.That(exception.Message, Does.Contain($"?{parameterName}=visiblevalue"));
+    }
+
+    [TestCase("access%5Ftoken", "access_token"), TestCase("api%2Dkey", "api-key"), Parallelizable]
+    [Description("DiVoid #9938: the rendered url decodes an unreserved escape before the redactor reads it, so an encoded separator reaches the rule as its plain character and cannot hide the credential word")]
+    public void PercentEncodedSeparatorInName_DecodedAndRedacted(string parameterName, string renderedName) {
+        HttpServiceException exception = CaptureFailingCall($"https://example.test/probe?{parameterName}=topsecretvalue");
+
+        Assert.That(exception.Message, Does.Contain($"{renderedName}=<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9938: only the name is matched, so a benign parameter whose value happens to carry a credential word keeps that value")]
+    public void CredentialWordInValueOnly_ValueKeptVerbatim() {
+        HttpServiceException exception = CaptureFailingCall("https://example.test/probe?page=tokenholder&filter=secretsauce");
+
+        Assert.That(exception.Message, Does.Contain("?page=tokenholder&filter=secretsauce"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9938: the query starts at the first question mark, so a later one inside a value does not move the span and leave the credential ahead of it verbatim")]
+    public void QuestionMarkInsideAValue_QueryStillStartsAtTheFirstOne() {
+        HttpServiceException exception = CaptureFailingCall("https://example.test/probe?sig=topsecretvalue&q=a?b");
+
+        Assert.That(exception.Message, Does.Contain("?sig=<redacted>&q=a?b"));
+        Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
     }
 
     [Test, Parallelizable]
@@ -93,6 +167,18 @@ public class HttpServiceQueryRedactionTests {
     }
 
     [Test, Parallelizable]
+    [Description("DiVoid #9938: the entry is upper case while the name is lower case, so a comparison that only folds the name away fails here")]
+    public void ServiceSet_AddedWordInDifferentCasing_ValueRedacted() {
+        HttpService service = new(new SequenceHandler(ErrorResponse()));
+        service.SensitiveQueryParameters.Add("VENDORSECRET");
+
+        HttpServiceException exception = Capture(service, "https://example.test/probe?vendorsecret=topsecretvalue");
+
+        Assert.That(exception.Message, Does.Contain("vendorsecret=<redacted>"));
+        Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
+    }
+
+    [Test, Parallelizable]
     public void ServiceSet_RemovedWord_ValueKeptVerbatim() {
         HttpService service = new(new SequenceHandler(ErrorResponse()));
         service.SensitiveQueryParameters.Remove("key");
@@ -100,6 +186,29 @@ public class HttpServiceQueryRedactionTests {
         HttpServiceException exception = Capture(service, "https://example.test/probe?key=nolongerredacted");
 
         Assert.That(exception.Message, Does.Contain("key=nolongerredacted"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9938: a consumer reaches a shipped entry through any casing, which pins the set's own comparer rather than the name comparison")]
+    public void ServiceSet_RemovedWordInDifferentCasing_ValueKeptVerbatim() {
+        HttpService service = new(new SequenceHandler(ErrorResponse()));
+        service.SensitiveQueryParameters.Remove("KEY");
+
+        HttpServiceException exception = Capture(service, "https://example.test/probe?key=nolongerredacted");
+
+        Assert.That(exception.Message, Does.Contain("key=nolongerredacted"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9938: the set is the only source of sensitive words, so an implementation carrying a hard coded fallback list fails here")]
+    public void ServiceSet_Cleared_NothingRedacted() {
+        HttpService service = new(new SequenceHandler(ErrorResponse()));
+        service.SensitiveQueryParameters.Clear();
+
+        HttpServiceException exception = Capture(service, "https://example.test/probe?access_token=stillvisible");
+
+        Assert.That(exception.Message, Does.Contain("access_token=stillvisible"));
+        Assert.That(exception.Message, Does.Not.Contain("<redacted>"));
     }
 
     [Test, Parallelizable]
@@ -234,7 +343,7 @@ public class HttpServiceQueryRedactionTests {
 
     static List<string> InterpolationHoles(string source) {
         List<string> holes = [];
-        foreach (Match literal in Regex.Matches(source, "\\$\"[^\"\\n]*\""))
+        foreach (Match literal in Regex.Matches(source, "(?:\\$@|@\\$|\\$)\"(?:\\\\.|\"\"|[^\"])*\""))
             foreach (Match hole in Regex.Matches(literal.Value, @"\{[^{}]*\}"))
                 holes.Add(hole.Value);
         return holes;
@@ -247,5 +356,13 @@ public class HttpServiceQueryRedactionTests {
 
         Assert.That(holes.Where(hole => hole.Contains("RequestUri")), Is.Empty);
         Assert.That(holes.Count(hole => hole.Contains("DumpUrl(response)")), Is.GreaterThanOrEqualTo(3));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9938: the scanner above cannot read a raw string literal, so its arrival is failed here rather than silently narrowing what the previous test sees")]
+    public void SourceCarriesNoLiteralShapeTheScannerCannotRead() {
+        string source = File.ReadAllText(HttpServiceSourcePath());
+
+        Assert.That(Regex.Matches(source, "\\$+\"\"\""), Is.Empty);
     }
 }

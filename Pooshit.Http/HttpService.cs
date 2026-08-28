@@ -67,16 +67,13 @@ public class HttpService : IHttpService {
     };
 
     /// <summary>
-    /// words treated as credentials when they appear in a query parameter name: the value of such a parameter is replaced by a placeholder in error messages while its name survives; a name is split into words at punctuation and at camel case boundaries, matched ignoring case, separate from <see cref="SensitiveHeaders"/> and not safe to mutate once the service has been used
+    /// words treated as credentials when they appear anywhere inside a query parameter name: the value of such a parameter is replaced by a placeholder in error messages while its name survives; the name is matched as a substring ignoring case, so a longer word carrying an entry is redacted too, separate from <see cref="SensitiveHeaders"/> and not safe to mutate once the service has been used
     /// </summary>
     public ISet<string> SensitiveQueryParameters { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
         "token",
         "key",
-        "apikey",
-        "accesstoken",
         "secret",
         "password",
-        "signature",
         "sig",
         "auth",
         "credential"
@@ -230,22 +227,7 @@ public class HttpService : IHttpService {
     }
         
     bool IsSensitiveQueryParameter(string name) {
-        int start = 0;
-        for (int index = 0; index < name.Length; ++index) {
-            char character = name[index];
-            if (!char.IsLetterOrDigit(character)) {
-                if (index > start && SensitiveQueryParameters.Contains(name.Substring(start, index - start)))
-                    return true;
-                start = index + 1;
-            }
-            else if (index > start && char.IsUpper(character) && char.IsLower(name[index - 1])) {
-                if (SensitiveQueryParameters.Contains(name.Substring(start, index - start)))
-                    return true;
-                start = index;
-            }
-        }
-
-        return start < name.Length && SensitiveQueryParameters.Contains(name.Substring(start));
+        return SensitiveQueryParameters.Any(word => name.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
     string DumpUrl(HttpResponseMessage response) {
