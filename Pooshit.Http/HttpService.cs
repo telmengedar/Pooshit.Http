@@ -65,7 +65,23 @@ public class HttpService : IHttpService {
         "X-Auth-Token",
         "X-Access-Token"
     };
-        
+
+    /// <summary>
+    /// words treated as credentials when they appear in a query parameter name: the value of such a parameter is replaced by a placeholder in error messages while its name survives; a name is split into words at punctuation and at camel case boundaries, matched ignoring case, separate from <see cref="SensitiveHeaders"/> and not safe to mutate once the service has been used
+    /// </summary>
+    public ISet<string> SensitiveQueryParameters { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "token",
+        "key",
+        "apikey",
+        "accesstoken",
+        "secret",
+        "password",
+        "signature",
+        "sig",
+        "auth",
+        "credential"
+    };
+
 #if !NETSTANDARD2_0
     /// <summary>
     /// access default request version of http client
@@ -213,6 +229,56 @@ public class HttpService : IHttpService {
         return builder.ToString();
     }
         
+    bool IsSensitiveQueryParameter(string name) {
+        int start = 0;
+        for (int index = 0; index < name.Length; ++index) {
+            char character = name[index];
+            if (!char.IsLetterOrDigit(character)) {
+                if (index > start && SensitiveQueryParameters.Contains(name.Substring(start, index - start)))
+                    return true;
+                start = index + 1;
+            }
+            else if (index > start && char.IsUpper(character) && char.IsLower(name[index - 1])) {
+                if (SensitiveQueryParameters.Contains(name.Substring(start, index - start)))
+                    return true;
+                start = index;
+            }
+        }
+
+        return start < name.Length && SensitiveQueryParameters.Contains(name.Substring(start));
+    }
+
+    string DumpUrl(HttpResponseMessage response) {
+        string url = response.RequestMessage?.RequestUri?.ToString();
+        if (url == null)
+            return string.Empty;
+
+        int queryStart = url.IndexOf('?');
+        if (queryStart < 0)
+            return url;
+
+        int queryEnd = url.IndexOf('#', queryStart);
+        if (queryEnd < 0)
+            queryEnd = url.Length;
+
+        StringBuilder builder = new();
+        builder.Append(url, 0, queryStart + 1);
+
+        string[] parameters = url.Substring(queryStart + 1, queryEnd - queryStart - 1).Split('&');
+        for (int index = 0; index < parameters.Length; ++index) {
+            if (index > 0)
+                builder.Append('&');
+
+            string parameter = parameters[index];
+            int separator = parameter.IndexOf('=');
+            if (separator >= 0 && IsSensitiveQueryParameter(parameter.Substring(0, separator)))
+                builder.Append(parameter, 0, separator + 1).Append("<redacted>");
+            else builder.Append(parameter);
+        }
+
+        return builder.Append(url, queryEnd, url.Length - queryEnd).ToString();
+    }
+
     Task<HttpResponseMessage> SendRequest(HttpRequestMessage request, HttpOptions options) {
         return client.SendAsync(request, options?.CompletionOption ?? HttpCompletionOption.ResponseContentRead);
     }
@@ -221,9 +287,7 @@ public class HttpService : IHttpService {
         if ((int)response.StatusCode < 200 || (int)response.StatusCode > 399) {
             using StreamReader reader = new(await response.Content.ReadAsStreamAsync());
             string responseBody = await reader.ReadToEndAsync();
-            if(!string.IsNullOrEmpty(responseBody))
-                throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response, options)}\n{responseBody}", body: responseBody);
-            throw new HttpServiceException(response, $"Error sending request to '{response.RequestMessage?.RequestUri}' -> status {response.StatusCode}\n{DumpHeaders(response, options)}");
+            throw new HttpServiceException(response, $"Error sending request to '{DumpUrl(response)}' -> status {response.StatusCode}\n{DumpHeaders(response, options)}", body: string.IsNullOrEmpty(responseBody) ? null : responseBody);
         }
     }
 
@@ -257,7 +321,7 @@ public class HttpService : IHttpService {
                     return await decoder.Decode<T>(response);
                 }
                 catch (Exception e) {
-                    throw new HttpServiceException(response, $"Error decoding response of '{response.RequestMessage?.RequestUri}'", e);
+                    throw new HttpServiceException(response, $"Error decoding response of '{DumpUrl(response)}'", e);
                 }
             }
 
@@ -297,7 +361,7 @@ public class HttpService : IHttpService {
     async Task<T> DecodeUnknownMediaType<T>(HttpResponseMessage response, IResponseDecoder decoder, string mediaType) {
         string body = await response.Content.ReadAsStringAsync();
         string reported = string.IsNullOrEmpty(mediaType) ? "<none>" : mediaType;
-        string context = $"'{response.RequestMessage?.RequestUri}' (media type '{reported}', requested type '{typeof(T).Name}')";
+        string context = $"'{DumpUrl(response)}' (media type '{reported}', requested type '{typeof(T).Name}')";
 
         if (!StartsJsonStructure(body))
             throw new HttpServiceException(response, $"Unable to decode response of {context}", body: body);
