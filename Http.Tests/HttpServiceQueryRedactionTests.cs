@@ -176,7 +176,7 @@ public class HttpServiceQueryRedactionTests {
     }
 
     [Test, Parallelizable]
-    [Description("DiVoid #9938: a response the handler never stamped has no request uri, which the previous null propagating interpolation rendered as nothing")]
+    [Description("DiVoid #9938: a response the handler never stamped has no request uri, and the url renders as nothing rather than as a sentinel")]
     public void ResponseWithoutRequestMessage_RendersEmptyUrl() {
         SequenceHandler handler = new(ErrorResponse()) { StampRequestMessage = false };
         HttpService service = new(handler);

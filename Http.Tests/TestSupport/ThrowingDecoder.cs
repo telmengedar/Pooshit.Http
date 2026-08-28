@@ -6,7 +6,7 @@ using Pooshit.Http.Encodings;
 namespace Http.Tests.TestSupport;
 
 /// <summary>
-/// decoder which rejects every response, used to reach the decode failure branches
+/// decoder which rejects every response it is asked to decode
 /// </summary>
 public class ThrowingDecoder : IResponseDecoder {
 
