@@ -67,6 +67,8 @@ public class HttpService : IHttpService {
         "Set-Cookie",
         "Api-Key",
         "X-Api-Key",
+        "apiKey",
+        "X-ApiKey",
         "X-Auth-Token",
         "X-Access-Token"
     };
