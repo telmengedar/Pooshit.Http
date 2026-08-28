@@ -21,6 +21,11 @@ public class HttpService : IHttpService {
         "Transfer-Encoding"
     };
 
+    static readonly ISet<string> urlValuedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "Location",
+        "Referer"
+    };
+
     readonly HttpClient client;
     readonly Random random = new();
         
@@ -203,39 +208,11 @@ public class HttpService : IHttpService {
         return request;
     }
 
-    void DumpHeader(StringBuilder builder, KeyValuePair<string, IEnumerable<string>> header, HeaderDumpMode mode) {
-        builder.Append(header.Key).Append(": ");
-        if (mode == HeaderDumpMode.Redacted && SensitiveHeaders.Contains(header.Key))
-            builder.AppendLine("<redacted>");
-        else builder.AppendLine(string.Join("; ", header.Value));
-    }
-
-    string DumpHeaders(HttpResponseMessage response, HttpOptions options) {
-        HeaderDumpMode mode = options?.HeaderDumpMode ?? HeaderDumpMode;
-        if (mode == HeaderDumpMode.Omitted)
-            return string.Empty;
-
-        StringBuilder builder = new();
-        builder.AppendLine("Request Headers");
-        if(response.RequestMessage!=null)
-            foreach (KeyValuePair<string, IEnumerable<string>> header in response.RequestMessage.Headers)
-                DumpHeader(builder, header, mode);
-
-        builder.AppendLine("Response Headers");
-        foreach(KeyValuePair<string, IEnumerable<string>> header in response.Headers)
-            DumpHeader(builder, header, mode);
-        return builder.ToString();
-    }
-        
     bool IsSensitiveQueryParameter(string name) {
         return SensitiveQueryParameters.Any(word => name.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
-    string DumpUrl(HttpResponseMessage response) {
-        string url = response.RequestMessage?.RequestUri?.ToString();
-        if (url == null)
-            return string.Empty;
-
+    string RedactQuery(string url) {
         int queryStart = url.IndexOf('?');
         if (queryStart < 0)
             return url;
@@ -260,6 +237,45 @@ public class HttpService : IHttpService {
         }
 
         return builder.Append(url, queryEnd, url.Length - queryEnd).ToString();
+    }
+
+    string DumpUrl(HttpResponseMessage response) {
+        string url = response.RequestMessage?.RequestUri?.ToString();
+        return url == null ? string.Empty : RedactQuery(url);
+    }
+
+    void DumpHeader(StringBuilder builder, KeyValuePair<string, IEnumerable<string>> header, HeaderDumpMode mode) {
+        builder.Append(header.Key).Append(": ");
+        if (mode == HeaderDumpMode.Redacted) {
+            if (SensitiveHeaders.Contains(header.Key)) {
+                builder.AppendLine("<redacted>");
+                return;
+            }
+
+            if (urlValuedHeaders.Contains(header.Key)) {
+                builder.AppendLine(string.Join("; ", header.Value.Select(RedactQuery)));
+                return;
+            }
+        }
+
+        builder.AppendLine(string.Join("; ", header.Value));
+    }
+
+    string DumpHeaders(HttpResponseMessage response, HttpOptions options) {
+        HeaderDumpMode mode = options?.HeaderDumpMode ?? HeaderDumpMode;
+        if (mode == HeaderDumpMode.Omitted)
+            return string.Empty;
+
+        StringBuilder builder = new();
+        builder.AppendLine("Request Headers");
+        if(response.RequestMessage!=null)
+            foreach (KeyValuePair<string, IEnumerable<string>> header in response.RequestMessage.Headers)
+                DumpHeader(builder, header, mode);
+
+        builder.AppendLine("Response Headers");
+        foreach(KeyValuePair<string, IEnumerable<string>> header in response.Headers)
+            DumpHeader(builder, header, mode);
+        return builder.ToString();
     }
 
     Task<HttpResponseMessage> SendRequest(HttpRequestMessage request, HttpOptions options) {
