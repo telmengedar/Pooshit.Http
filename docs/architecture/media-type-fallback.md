@@ -131,7 +131,7 @@ The design therefore materialises rather than peeks (§5.2), and carries an expl
 | Item | Why separate | Disposition |
 |---|---|---|
 | The exact-string media-type gap as a **general dispatch redesign** (a media-type registry, `+xml` suffixes, parameterised matching) | This change fixes one family and the unknown-header class. Generalising the matcher redesigns the dispatch itself, recorded in #8312. | Task filed |
-| The `text/plain` and XML branches' **force-cast hazard** (#8312 branches 7–8) — same `InvalidCastException` shape | Those branches act on an *explicit, recognised* header. Repairing them means deciding whether the library overrides a server that stated its type clearly — a different posture question from "the header told us nothing usable". Mixing the two would make the posture argument in §6.1 unfalsifiable. | Task filed |
+| The `text/plain` and XML branches' **force-cast hazard** (#8312 branches 7–8) — same `InvalidCastException` shape | Those branches act on an *explicit, recognised* header. Repairing them means deciding whether the library overrides a server that stated its type clearly — a different posture question from "the header told us nothing usable". Mixing the two would make the posture argument in §6.1 unfalsifiable. | Task filed as #9664. Its item 2 has since landed: both branches now refuse a requested type that cannot receive what they produce with the same descriptive `HttpServiceException`, so the force-cast hazard described in this row is closed. The posture question this row is really about — whether an explicit `text/plain` is overridden and decoded — remains open. |
 | The **header-escaping** defect and the follower's **redirect limits** | Named out of scope by the brief. | Pre-existing tasks |
 | The **zero-length** guard returning `default` with no signal | Decided deliberately in §8. | Task filed |
 | Sending a default `Accept` header from the library | Surfaced in §6.5. It is the other true root cause, and it is not this change. | Task filed |
@@ -210,7 +210,7 @@ And the alternative is worse than a posture change: today the library *also* ign
 Three reasons, in order of weight:
 
 1. **`<` is ambiguous where `{` is not.** The most common non-XML thing an HTTP API returns starting with `<` is **HTML** — a proxy error page, a WAF block, a captive portal, a load balancer's 502 body. Sniffing `<` into an XML document turns "your gateway returned an HTML error page" into an XML parse error at line 3, or worse, into a successfully loaded document of nonsense. `{` and `[` have no comparable impostor in HTTP response bodies.
-2. **The XML branch is not pluggable.** It consults no decoder and force-casts its result, so a sniffed XML success would help only callers who asked for `XDocument` — a far narrower population than "asked for a domain type". The JSON branch is the one that serves the actual use case.
+2. **The XML branch is not pluggable.** It consults no decoder, so a sniffed XML success would help only callers who asked for `XDocument` — a far narrower population than "asked for a domain type". The JSON branch is the one that serves the actual use case.
 3. **The evidence points at JSON.** JSON is where mislabelling is epidemic, for a traceable reason: `text/javascript` is a JSONP-era artifact, and JSONP is a JSON convention. There is no equivalent legacy pushing XML APIs to lie about their type.
 
 If an XML sniff is ever wanted, it arrives with a real case attached. Building it now is YAGNI (#1136 §1).

@@ -328,9 +328,13 @@ public class HttpService : IHttpService {
         {
             case "application/xml":
             case "text/xml":
+                if (!typeof(T).IsAssignableFrom(typeof(XDocument)))
+                    throw new HttpServiceException(response, $"Unable to decode response of {DumpResponseContext<T>(response, mediaType)}", body: await response.Content.ReadAsStringAsync());
                 using (response)
                     return (T)(object)XDocument.Load(await response.Content.ReadAsStreamAsync());
             case "text/plain":
+                if (!typeof(T).IsAssignableFrom(typeof(string)))
+                    throw new HttpServiceException(response, $"Unable to decode response of {DumpResponseContext<T>(response, mediaType)}", body: await response.Content.ReadAsStringAsync());
                 using(response)
                     return (T)(object)await response.Content.ReadAsStringAsync();
         }
@@ -357,10 +361,14 @@ public class HttpService : IHttpService {
         return false;
     }
 
+    string DumpResponseContext<T>(HttpResponseMessage response, string mediaType) {
+        string reported = string.IsNullOrEmpty(mediaType) ? "<none>" : mediaType;
+        return $"'{DumpUrl(response)}' (media type '{reported}', requested type '{typeof(T).Name}')";
+    }
+
     async Task<T> DecodeUnknownMediaType<T>(HttpResponseMessage response, IResponseDecoder decoder, string mediaType) {
         string body = await response.Content.ReadAsStringAsync();
-        string reported = string.IsNullOrEmpty(mediaType) ? "<none>" : mediaType;
-        string context = $"'{DumpUrl(response)}' (media type '{reported}', requested type '{typeof(T).Name}')";
+        string context = DumpResponseContext<T>(response, mediaType);
 
         if (!StartsJsonStructure(body))
             throw new HttpServiceException(response, $"Unable to decode response of {context}", body: body);
