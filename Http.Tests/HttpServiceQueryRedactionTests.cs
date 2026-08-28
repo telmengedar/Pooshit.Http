@@ -200,14 +200,15 @@ public class HttpServiceQueryRedactionTests {
     }
 
     [Test, Parallelizable]
-    [Description("DiVoid #9938: signature is redundant while sig is present and ships anyway so that removing sig, the entry a consumer is most likely to drop, does not silently take signature coverage with it")]
-    public void ServiceSet_RemovedSig_SignatureCoverageSurvives() {
+    [Description("DiVoid #9938: signature ships redundantly to rescue the long form family when a consumer removes sig, and cannot rescue a bare sig, which no longer entry contains")]
+    public void ServiceSet_RemovedSig_LongFormSurvivesAndBareSigDoesNot() {
         HttpService service = new(new SequenceHandler(ErrorResponse()));
         service.SensitiveQueryParameters.Remove("sig");
 
-        HttpServiceException exception = Capture(service, "https://example.test/probe?X-Amz-Signature=topsecretvalue&design=visiblevalue");
+        HttpServiceException exception = Capture(service, "https://example.test/probe?X-Amz-Signature=topsecretvalue&sig=azuresasvalue&design=visiblevalue");
 
         Assert.That(exception.Message, Does.Contain("X-Amz-Signature=<redacted>"));
+        Assert.That(exception.Message, Does.Contain("sig=azuresasvalue"));
         Assert.That(exception.Message, Does.Contain("design=visiblevalue"));
         Assert.That(exception.Message, Does.Not.Contain("topsecretvalue"));
     }
