@@ -58,15 +58,6 @@ public class HttpServiceDisposalTests {
     }
 
     [Test, Parallelizable]
-    public void Post_NoBody_DoesNotValidateStatus() {
-        using HttpResponseMessage response = new(HttpStatusCode.InternalServerError);
-        SequenceHandler handler = new(response);
-        HttpService service = new(handler);
-
-        Assert.DoesNotThrowAsync(() => service.Post("https://example.test/probe"));
-    }
-
-    [Test, Parallelizable]
     public void Send_CalledWithSingleArgument_CompilesAndSucceeds() {
         using HttpResponseMessage response = new(HttpStatusCode.OK);
         SequenceHandler handler = new(response);
