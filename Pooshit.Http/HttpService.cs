@@ -74,6 +74,7 @@ public class HttpService : IHttpService {
         "key",
         "secret",
         "password",
+        "signature",
         "sig",
         "auth",
         "credential"
