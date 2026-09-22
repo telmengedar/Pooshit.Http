@@ -158,7 +158,12 @@ Not from a string, not from a pre-filled buffer. This is the shape #10071 sugges
 
 ### D2 — gated by size: buffer under the LOH threshold, stream above it
 
-`TryComputeLength` attempts a bounded serialisation into a pooled buffer of **85,000 bytes**. Fits → report the length and write the buffer; overflows → discard it and stream.
+The content **serialises once, in its constructor**, into a bounded buffer capped at **85,000 bytes** — a `MemoryStream` which stops retaining and drops what it holds the moment a write would cross the cap. Fits → `TryComputeLength` reports the retained byte count and `SerializeToStreamAsync` writes the buffer; overflows → the buffer is already gone and `SerializeToStreamAsync` streams from the object.
+
+**Two deviations from the shape this section first specified, and why.**
+
+- **The probe is eager, in the constructor, not lazy inside `TryComputeLength`.** A lazy probe moves the buffered branch's serialisation to first send, so a caller mutating the object between `Encode` and the send would get different bytes than today's `StringContent` gives them — a silent behaviour change on exactly the *small* payloads this design promises to leave alone, and §5.1's first row would stop being true. The eager probe keeps it; §6 row 13 pins it.
+- **The buffer is not pooled.** `ArrayPool<byte>` needs a `System.Buffers` package reference on `netstandard2.0`, and §2 puts the csproj out of scope. Independently it would be the wrong call: a flat 85,000-byte rental comes out of a 128 KB bucket which is itself an LOH object, taken on *every* request including a fourteen-byte one — strictly worse than a `MemoryStream` that grows to the body it actually holds.
 
 **Why a threshold at all, rather than always streaming.** Always-streaming changes the wire for every JSON request this library has ever sent, including a twelve-byte body, to fix a failure that needs a multi-megabyte one. That is a blast radius wildly out of proportion to the defect, and §8.1 says plainly that I cannot measure who depends on `Content-Length`.
 
@@ -193,7 +198,7 @@ The change is behavioural and internal. `IResponseEncoder.Encode(object) → Htt
 
 **On the streaming branch the body is serialised at send time, not at encode time.** If the caller mutates the object between building the request and the hop re-sending it, the two hops carry **different bytes**. Today's `StringContent` freezes the document when `Encode` is called.
 
-This is narrow — it needs a large payload, a redirect, and a mutation in between — but it is a real behavioural difference and it is **not** detectable by any test that does not mutate. §6 row 7 pins the honest version of it: that the hops are identical when the object is not touched.
+This is narrow — it needs a large payload, a redirect, and a mutation in between — but it is a real behavioural difference and it is **not** detectable by any test that does not mutate. §6 rows 12 and 15 pin the honest version of it — the hops are identical when the object is not touched — and row 14 pins the difference itself rather than leaving it undetectable.
 
 ### 5.3 What this does not fix
 
@@ -203,22 +208,50 @@ This is narrow — it needs a large payload, a redirect, and a mutation in betwe
 
 ## 6. Coverage
 
-`Http.Tests/` — a new fixture, `JsonEncoderTests.cs`, because this is encoder behaviour and does not belong in the redirect or service fixtures. Each row names the **guard**; the fourth column is what makes it go red **uniquely**.
+`Http.Tests/` — a new fixture, `JsonEncoderTests.cs`, because this is encoder behaviour and does not belong in the redirect or service fixtures. **The table is the whole fixture**, in file order, one row per test method, so that it can be checked line by line against `JsonEncoderTests.cs`.
 
-| # | Guard | Shape | Goes red uniquely when |
+| # | Guard | Shape | Goes red when |
 |---|---|---|---|
 | 1 | `Encode_SmallBody_ReportsContentLength` | an object serialising well under the cap; assert `Headers.ContentLength` is non-null and equals the byte count | the gate is removed and everything streams — **the row that protects every existing caller** |
 | 2 | `Encode_SmallBody_BytesMatchWriteString` | same object; assert the content's bytes equal `Json.WriteString`'s UTF-8 | the encoder changed what it emits, not just how |
-| 3 | `Encode_LargeBody_ReportsNoContentLength` | an object over the cap; assert `Headers.ContentLength` is null | the gate never trips, so the OOM path is still materialising |
-| 4 | `Encode_LargeBody_BytesMatchWriteString` | same; drain the content and compare to `Json.WriteString`'s UTF-8 | the streaming branch emits different JSON from the buffered one — the two branches diverging is the defect this design most risks |
-| 5 | `Encode_LargeBody_DoesNotMaterialiseTheDocument` | serialise a large object through the content and assert peak allocation stays below a multiple of the document size | **the guard for the actual defect.** Without it every other row passes on an implementation that still calls `WriteString` |
-| 6 | `Encode_ContentTypeIsApplicationJson` | **dual** — both branches; assert the media type survives | the header was set on the old `StringContent` and dropped in the rewrite |
-| 7 | `Encode_LargeBody_SurvivesFiveSends_WithIdenticalBytes` | send the same content instance five times through a draining handler; assert five equal byte counts | replay broke — the brief's concern, pinned even though §3.3 says it does not currently apply |
-| 8 | `Post308_LargeJsonBody_HopRepeatsIdenticalBytes` | the redirect hop end-to-end with an over-cap JSON body; assert hop 0 and hop 1 bytes are identical | the interaction with #14516 D2 regressed at the integration level rather than in isolation |
+| 3 | `Encode_SmallBodyWithCustomOptions_UsesThem` | the buffered branch built with `JsonOptions.Default`; assert the emitted casing is the caller's | the constructor probe serialises with something other than the options it was handed |
+| 4 | `Encode_LargeBodyWithCustomOptions_UsesThem` | the streaming branch with `JsonOptions.Default`; assert the drained bytes are the caller's options' and explicitly *not* `RestApi`'s | the send-time write hardcodes `JsonOptions.RestApi` — row 3's defect on the branch where it is the easier mistake to make |
+| 5 | `Encode_BodyAtTheCap_ReportsContentLength` | a document serialising to exactly 85,000 bytes | the boundary moved down, so a body the design promises to leave alone starts going out chunked |
+| 6 | `Encode_BodyOneByteOverTheCap_ReportsNoContentLength` | the same document one byte longer | the boundary moved up; with row 5 this pins the comparison rather than just the constant |
+| 7 | `Encode_LargeBody_ReportsNoContentLength` | an object well over the cap; assert `Headers.ContentLength` is null | the gate never trips, so the OOM path is still materialising |
+| 8 | `Encode_LargeBody_BytesMatchWriteString` | same; drain the content and compare to `Json.WriteString`'s UTF-8 | the streaming branch emits different JSON from the buffered one — the two branches diverging is the defect this design most risks |
+| 9 | `Encode_LargeBody_ReachesTheTransportInChunksBelowTheCap` | drain an over-cap document into a recording sink; assert the total equals the document size and that **no single write** reaches the cap | the body arrives at the transport as one block, or in blocks coarse enough to be one — **write shape, not provenance** (§6.1) |
+| 10 | `Encode_LargeBody_ReadsTheDocumentWhileWritingIt` | the same drain, with every element of the document recording how many bytes had already reached the sink at the moment the serialiser read it; assert the **last** element was read after more than half the document was already on the wire | the document is fully serialised before its first byte goes out, at any chunk size — **the guard for the actual defect** (§6.1) |
+| 11 | `Encode_ContentTypeIsApplicationJson` | **dual** — both branches; assert the media type survives | the header was set on the old `StringContent` and dropped in the rewrite |
+| 12 | `Encode_LargeBody_SurvivesFiveSends_WithIdenticalBytes` | send the same content instance five times through a draining handler; assert five equal byte counts | replay broke — the brief's concern, pinned even though §3.3 says it does not currently apply |
+| 13 | `Encode_SmallBody_MutatedAfterEncode_CarriesTheEncodedDocument` | mutate the object after `Encode`, then drain; assert the **pre-mutation** bytes | the buffered branch went lazy and §5.1's promise to small payloads quietly broke — the row D2's eager probe exists for |
+| 14 | `Encode_LargeBody_MutatedAfterEncode_CarriesTheMutation` | the same over the cap; assert the **post-mutation** bytes | §5.2 stopped being true — the row pins the behavioural difference rather than leaving it undetectable |
+| 15 | `Post308_LargeJsonBody_HopRepeatsIdenticalBytes` | the redirect hop end-to-end with an over-cap JSON body; assert hop 0 and hop 1 bytes are identical | the interaction with #14516 D2 regressed at the integration level rather than in isolation |
 
-Rows 1 and 6 are the duals: without them the suite is green for an implementation that streams everything and one that loses the content type.
+Rows 1 and 11 are the duals: without them the suite is green for an implementation that streams everything and one that loses the content type.
 
-**Row 5 is the load-bearing one and the hardest to write honestly.** A peak-allocation assertion is inherently noisy; it should assert a generous bound (the document size plus a fixed margin, not a tight multiple) so that it fails on *materialisation* and not on GC timing. **If it cannot be made stable, say so and drop it rather than weakening it into a test that passes for the wrong reason** — a flaky guard removed is better than a tight one relaxed until it is decoration.
+### 6.1 Rows 9 and 10 replace the peak-allocation assertion, and what they still cannot see
+
+**What this section originally specified, and what happened to it.** The original row 5 was *"serialise a large object through the content and assert peak allocation stays below a multiple of the document size"*, justified as **the guard for the actual defect**. It was built and dropped. Peak managed heap cannot be asserted against from inside this suite: the fixture is `[Parallelizable]` and every other fixture's allocations land in the same process behind the same GC, so the bound either fails on unrelated work or has to be widened until it is decoration. §11 step 4's own instruction — *say so and drop it rather than weakening it* — is what was followed. Rows 9 and 10 are what replaced it, and neither of them measures allocation.
+
+**Row 9 alone is not enough, and that is measured rather than feared.** Row 9 discriminates *one large write* from *many small writes*. It is blind to where the bytes came from. An implementation that calls `Json.WriteString` on the **whole document** and then writes the resulting array out in 1,024-byte chunks — the exact 4× allocation this design exists to remove, wearing a different write shape — satisfies row 9 and passes **every other row in this table**. That implementation was constructed and run against the full suite (QA #14657 §1, axis C18): 424 of 424 green.
+
+**Row 10 is what excludes it.** A materialise-then-write implementation must finish reading the whole object graph before its first byte reaches the transport, whichever size it then chops the result into; so every element's recorded progress is zero. Row 10 reds it with `Expected: greater than 48000 / But was: 0`. The shipped encoder reads the document's last element after 95,232 of 96,001 bytes have already been written. The property is **interleaving**, and it holds against one-block and many-block materialisation alike.
+
+**The two rows are independent, both directions measured.** Neither subsumes the other on the axes run against them:
+
+| axis | row 9 | row 10 |
+|---|---|---|
+| the shipped defect — `Json.WriteString` into a `StringContent` | red | red |
+| C18 — materialise at send time, write in 1,024-byte chunks | **green** | red |
+| C19 — materialise at send time, write in one block | red | red |
+| C22 — stream correctly, but through a 90,000-byte buffered writer | red | **green** |
+
+C22 is why row 9 stays: an implementation can interleave reads and writes honestly and still hand the transport a block at or above the cap — enlarging a writer's buffer past 85,000 bytes is enough — and row 10 cannot see it.
+
+**The hole that is left, named rather than closed.** Rows 9 and 10 observe **ordering**, not **retention**. They cannot see an implementation which interleaves reads and writes correctly *and also keeps every byte it has already emitted* — accumulating into a `StringBuilder` it flushes prefixes from, for instance. Such an implementation satisfies both rows and still allocates O(n). That class is smaller and considerably more contrived than materialise-then-chunk, but it is not empty, and the only thing that separates it is the allocation measurement this section could not make stable. **A reliable one needs a dedicated process, which makes it a benchmark rather than a suite guard.** It is filed as **#14661**, and is not pretended closed here.
+
+**Subsumption is not a reason to delete rows from this table.** On the 33-axis mutation population of #14657 §4, five of these guards have red-sets that are strict subsets of another's. They are kept. Subsumption is a property of the axis population rather than of the guards — row 9 was subsumed at 30 axes and not at 33 — so a guard deleted against today's axis set is a guard unavailable when tomorrow's mutation arrives. Rows 3, 5 and 6 also pin literals at representative sizes, which the rows subsuming them do not.
 
 ---
 
@@ -227,6 +260,8 @@ Rows 1 and 6 are the duals: without them the suite is green for an implementatio
 **Minor — `0.16.0-preview`.** The convention is *patch when behaviour is byte-identical for callers who opt into nothing, minor when it is not*. Callers under the cap are byte-identical; callers above it get a different framing on the wire. The literal test fails, so: minor.
 
 The release note must name the cap, the framing change and the size at which it starts — a caller debugging a server that rejects chunked bodies needs to find that sentence.
+
+**Neither is in this diff.** `Pooshit.Http.csproj` is owned by a concurrent version-bump change and is untouched here, so the branch still carries `0.15.1-preview` — §11 step 6.
 
 ---
 
@@ -238,7 +273,7 @@ The release note must name the cap, the framing change and the size at which it 
 | "the task's ~4× reproduces" | §3.1 | the figure not reproducing at this commit | **No** — 61 M peak on a 15.4 MB document. **But it reproduces only as *peak*;** measured as total allocation it is ~2×, and my first attempt got that and would have understated the defect. |
 | **discriminator:** "85,000 bytes is the boundary of the defect" | D2 | a materialisation that causes the reported failure below the LOH threshold, or an LOH allocation that does not | **Partially** — the *string* is UTF-16, so a document of ~42,500 UTF-8 bytes already produces an 85 KB string and lands on the LOH. **So the cap is generous by roughly 2× in the direction of still-buffering.** Named rather than tuned: moving it to ~42,500 would trip the gate for more callers, and the failure this fixes needs megabytes, not tens of kilobytes. |
 | "no public API change is required" | D4 | a caller who cannot express this through `IResponseEncoder` | **No** — the seam takes the object and returns `HttpContent`; mamgo-backend already shipped exactly this design through it without a library change, which is the existence proof. |
-| "byte-identical output" | §3.2 | an object graph where the two writers differ | **Not found**, but only one shape was compared. The falsifier class is any type whose serialisation depends on writer state — and rows 2 and 4 exist to keep checking it on whatever the suite happens to cover. |
+| "byte-identical output" | §3.2 | an object graph where the two writers differ | **Not found**, but only one shape was compared. The falsifier class is any type whose serialisation depends on writer state — and rows 2 and 8 exist to keep checking it on whatever the suite happens to cover. |
 
 ### 8.1 The claim I am not making
 
@@ -263,7 +298,7 @@ The release note must name the cap, the framing change and the size at which it 
 | Out-of-scope listed explicitly | **Pass** — §2 |
 | No multi-paragraph rationale for things that obviously stay | **Pass** |
 | Predecessor design banner where superseded | **N/A** — #14516 is relied on; §3.3 measures that its D2 constraint does not bind this change |
-| Coverage rows name the test identifier | **Pass** — §6, eight named guards, with row 5's stability limit stated rather than hidden |
+| Coverage rows name the test identifier | **Pass** — §6, fifteen named guards, one per test method in the fixture, with §6.1 naming what rows 9 and 10 cannot see |
 
 ---
 
@@ -297,10 +332,10 @@ In the consumers: does any endpoint receiving a >85 KB JSON body from this libra
 
 ## 11. Implementation order
 
-1. **The content type**, in `Encodings/`: holds the object and the options; `TryComputeLength` attempts the bounded serialisation; `SerializeToStreamAsync` writes the buffer or streams. Pool the buffer.
+1. **The content type**, in `Encodings/`: holds the object and the options; the constructor runs the bounded serialisation; `TryComputeLength` reports the retained count only when it fit; `SerializeToStreamAsync` writes the buffer or streams from the object. **No pooling** — D2's second deviation.
 2. **`JsonEncoder.Encode` returns it**, and the `// TODO: WriteAsync Stream?` comment goes — it is the thing being done.
-3. **Rows 1, 2, 3, 4, 6** — the cheap, stable guards.
-4. **Row 5**, the allocation guard, with a generous bound. **If it will not hold still, drop it and say so in the PR** rather than tightening the suite around a flaky number.
-5. **Rows 7 and 8** — replay, in isolation and through the hop.
-6. **Bump to `0.16.0-preview`** and write the release note from §7, naming the cap and the framing change.
+3. **Rows 1–8 and 11** — the cheap, stable guards, including the two that pin the cap boundary from both sides.
+4. **The allocation guard.** It did not hold still, so it was dropped and said so — §6.1. **Rows 9 and 10** are what shipped in its place, and §6.1 names the class they still cannot see.
+5. **Rows 12–15** — replay in isolation and through the hop, and the two mutation-after-encode rows.
+6. **Bump to `0.16.0-preview`** and write the release note from §7, naming the cap and the framing change. **Not done in this diff:** `Pooshit.Http.csproj` is owned by a concurrent version-bump change, so touching it here would have put two features in one pull request. The version on this branch is still `0.15.1-preview`; the bump and the release note are the merging maintainer's step.
 7. **Reconcile the map** — #8306 (`JsonEncoder` — its description is the defect), #8294, #8297's body-strategy list, and #8311 stage 2's fourth bullet, which describes the object path as "the configured encoder, or a freshly-constructed JSON encoder" and says nothing about materialisation. Concept nodes count (#3414).

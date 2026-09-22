@@ -14,11 +14,6 @@ public class WriteRecordingSink : Stream {
     public long BytesWritten { get; private set; }
 
     /// <summary>
-    /// number of writes the sink received
-    /// </summary>
-    public int Writes { get; private set; }
-
-    /// <summary>
     /// size of the largest single write the sink received
     /// </summary>
     public int LargestWrite { get; private set; }
@@ -55,7 +50,6 @@ public class WriteRecordingSink : Stream {
 
     /// <inheritdoc />
     public override void Write(byte[] data, int offset, int size) {
-        ++Writes;
         BytesWritten += size;
         if (size > LargestWrite)
             LargestWrite = size;

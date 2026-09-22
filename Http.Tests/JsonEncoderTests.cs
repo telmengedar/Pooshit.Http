@@ -125,8 +125,8 @@ public class JsonEncoderTests {
 
 
     [Test, Parallelizable]
-    [Description("pins that an over-cap document never reaches the transport as one materialised block, which is the failure this encoder exists to prevent")]
-    public async Task Encode_LargeBody_DoesNotMaterialiseTheDocument() {
+    [Description("pins that an over-cap document reaches the transport as a sequence of writes none of which is a whole-document block")]
+    public async Task Encode_LargeBody_ReachesTheTransportInChunksBelowTheCap() {
         List<ProbeDto> document = Document(overCapItems);
         int documentBytes = Serialized(document).Length;
 
@@ -136,6 +136,26 @@ public class JsonEncoderTests {
 
         Assert.That(sink.BytesWritten, Is.EqualTo(documentBytes));
         Assert.That(sink.LargestWrite, Is.LessThan(85000));
+    }
+
+
+    [Test, Parallelizable]
+    [Description("pins that an over-cap document is read from the object graph while its bytes are already on the wire, which no implementation serializing the whole document before its first write can satisfy")]
+    public async Task Encode_LargeBody_ReadsTheDocumentWhileWritingIt() {
+        WriteRecordingSink sink = new();
+        List<long> reads = new();
+        List<ReadProgressDto> document = new();
+        for (int index = 0; index < overCapItems; ++index)
+            document.Add(new(sink, reads, $"item-{index:D6}-padding-padding-padding"));
+
+        using HttpContent content = new JsonEncoder().Encode(document);
+        int documentBytes = Serialized(document).Length;
+        reads.Clear();
+        await content.CopyToAsync(sink);
+
+        Assert.That(sink.BytesWritten, Is.EqualTo(documentBytes));
+        Assert.That(reads, Has.Count.EqualTo(overCapItems));
+        Assert.That(reads[^1], Is.GreaterThan(documentBytes / 2));
     }
 
 
