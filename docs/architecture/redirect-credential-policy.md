@@ -173,7 +173,11 @@ The argument for minor is real and loses on purpose: this change *removes* somet
 
 - one hop only, and no loop or hop-count guard
 - the hop is always re-sent as `GET`, dropping verb and body
-- `307` throws outright; `308` is unrecognised and falls through the "3xx is not an error" path
+- ~~`307` throws outright; `308` is unrecognised and falls through the "3xx is not an error" path~~
+
+  > **CORRECTION 2026-09-22.** The struck bullet is superseded; retained per #11228 Lesson 3. Both statuses are now **followed**, preserving the original method and body, or failing loudly as `HttpServiceException`. See `docs/architecture/verb-preserving-redirect.md` (DiVoid **#14516**, task **#14513**).
+  >
+  > **The sibling bullets in this list are unchanged and still open** — one hop only, no loop or hop-count guard, the forced `GET` on the legacy arm, and the unpinned `GET` method (DiVoid **#8323**). §5.1's *"should this ship alone"* reasoning is unaffected: that argument was about the credential change, and the 307/308 work shipped separately under its own design.
 - **the hop's `GET` method is pinned by no test** — mutating it to `POST` survives the full suite (measured, review #9626)
 
 ### 5.1 Should this ship alone? Yes.

@@ -28,7 +28,11 @@ Nobody ever wrote down what the options bag means when it is handed to `Send`. #
 
 **Out of scope, deliberately** — each is a separate defect with its own blast radius, recorded in #8297 and filed rather than folded in:
 
-- The redirect follower's other limits: one hop only, always re-sent as GET dropping verb and body, no loop guard, 307 throws, 308 unrecognised.
+- The redirect follower's other limits: one hop only, always re-sent as GET dropping verb and body, no loop guard, ~~307 throws, 308 unrecognised~~.
+
+  > **CORRECTION 2026-09-22 — the 307/308 clause only.** The struck text read *"307 throws, 308 unrecognised"*; retained per #11228 Lesson 3. Both are now **followed**, preserving the original method and body, or failing loudly as `HttpServiceException` when the request cannot be replayed. See `docs/architecture/verb-preserving-redirect.md` (DiVoid **#14516**, task **#14513**).
+  >
+  > **The rest of this bullet is still true and is not corrected here:** one hop only, the forced `GET` on 301/302/303, and the absent loop guard remain open as DiVoid **#8323**.
 - Non-ASCII header mangling in `EncodeHeaderString`.
 - **Credential forwarding to an off-origin redirect target.** §2 of #9609 raises it; it is a property of the whole redirect follower, not of `Send`, and §7 below records what this change does and does not do to it. Filed as **#9619**.
 
