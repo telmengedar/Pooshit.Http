@@ -1,6 +1,7 @@
 # Architectural Document: `UrlProcessor` is a resolver, and its contract gets written down
 
 > **Repo path:** `docs/architecture/urlprocessor-contract.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#14601** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#14559** · the seam question **#14548** · project **#2281** · repo map root **#8292** · `HttpOptions` **#8299** · how-to-extend **#8314** · `HttpService` **#8297** · request lifecycle **#8311** stage 4.1.
 > **Predecessors, none superseded:** **#14516** (D7 — the hop's ownership rule and the exception contract this design must not break) · **#14574** (#8316, the band).
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §2 existing systems first, §3 configurability is not free, §4 less is better, §5 checklist, §6 anti-patterns) · Code Contracts **#114** §0 · YAGNI **#1184** · falsifiable universals **#9951** and the discriminator rule, **#14516** §D7.2.
