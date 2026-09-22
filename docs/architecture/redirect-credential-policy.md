@@ -1,6 +1,7 @@
 # Architectural Document: credential headers on the redirect hop
 
 > **Repo path:** `docs/architecture/redirect-credential-policy.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#9633** — this document's own DiVoid node. **Not a byte copy:** an independently authored condensation of this document, declared as one rather than resynced (#11228).
 > **DiVoid:** source task **#9619** · project **#2281** · repo map root **#8292** · `HttpService` **#8297** · `IHttpService` **#8298** · `HttpOptions` **#8299** · request lifecycle **#8311** · `HeaderDumpMode` **#9617**.
 > **Predecessor:** design **#9618** (`docs/architecture/send-options-contract.md`, PR #6). Not superseded — this document closes the limit #9618 §7 named and accepted.
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §3 configurability is not free, §4 less is better, §5 checklist, §6 anti-patterns) · Code Contracts **#114** §0.

@@ -1,6 +1,7 @@
 # Architectural Document: query redaction inside URL-valued header values
 
 > **Repo path:** `docs/architecture/error-message-header-url-redaction.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#14608** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#9940** · the design that found the gap **#9939** (`docs/architecture/error-message-query-redaction.md`, §7 route 6) · the task whose scope excluded it **#9938** · project **#2281** · repo map root **#8292** · `HttpService` **#8297** · `HeaderDumpMode` **#9617** · redirect credential policy **#9633** · TFM gap **#9965**.
 > **Sibling designs, none superseded:** `error-message-query-redaction.md` (#9939 — the request URL half), `error-message-header-redaction.md` (#9117 — the credential-header half), `redirect-credential-policy.md` (#9633 — why `SensitiveHeaders` is dual-purpose).
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §2 existing systems first, §3 configurability is not free, §4 less is better, §5 checklist walked as §8) · Code Contracts **#114** (§0 principles + the bounce rule, §4 comments, §13.1.1 guard axes, and the 2026-08-27 addendum on prose that outlives the defect it describes) · **#1267** (DRY threshold math) · **#275** (load-bearing tests).

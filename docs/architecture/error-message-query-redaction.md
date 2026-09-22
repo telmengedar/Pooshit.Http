@@ -1,6 +1,7 @@
 # Architectural Document: query-string redaction and body removal in `HttpServiceException` messages
 
 > **Repo path:** `docs/architecture/error-message-query-redaction.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#9939** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#9938** · driver analysis **#9937** · origin incident **#9559** (a Meta token found in a prod log) · consumer-side stopgap **#9702** / mamgo PR #895 · project **#2281** · repo map root **#8292** · `HttpService` **#8297** · `HttpOptions` **#8299** · `HttpServiceException` **#8300** · `HeaderDumpMode` **#9617** · redirect credential policy **#9633** · follow-up filed by this design **#9940**.
 > **Sibling designs, neither superseded:** `docs/architecture/error-message-header-redaction.md` (#9117 — the header half of the same message) and `docs/architecture/redirect-credential-policy.md` (#9633 — why `SensitiveHeaders` is dual-purpose and must not be reused here).
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §2 existing systems first, §3 configurability is not free, §4 less is better, §5 checklist walked as §8 of this document, §6 anti-patterns) · Code Contracts **#114** (§0 KISS/DRY/YAGNI + the bounce rule, §13.1.1 guard axes) · **#1267** (DRY threshold math) · **#1184** (design only what was asked) · **#6836** (expose the real structures under their real names).

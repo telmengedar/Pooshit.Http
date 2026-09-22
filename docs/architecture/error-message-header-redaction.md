@@ -1,6 +1,7 @@
 # Architectural Document: Header redaction in `HttpServiceException` messages
 
 > **Repo path:** `docs/architecture/error-message-header-redaction.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#14604** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#9117** · consumer-side redaction in mamgo (different repo, not this change) **#9116** · persistence leg of the same leak **#9461** · repo map root **#8292** · `HttpService` **#8297** · `HttpOptions` **#8299** · `HttpServiceException` **#8300** · project **#2281**.
 > **Contracts cited as load-bearing:** Code Contracts **#114** (§0 KISS/DRY/YAGNI + the bounce rule, §1 one type per file, §4 comments, §13.1.1 guard axes).
 > **Baseline:** `origin/master` @ `73c0b71`. Package version on master: `0.8.0-preview`; this change ships `0.9.0-preview`.
