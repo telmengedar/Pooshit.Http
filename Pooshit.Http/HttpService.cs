@@ -26,6 +26,9 @@ public class HttpService : IHttpService {
         "Referer"
     };
 
+    // HttpStatusCode.PermanentRedirect does not exist on netstandard2.0 (CS0117), the cast compiles on every target
+    const HttpStatusCode permanentRedirect = (HttpStatusCode)308;
+
     readonly HttpClient client;
     readonly Random random = new();
         
@@ -112,12 +115,17 @@ public class HttpService : IHttpService {
             && origin.Port == target.Port;
     }
 
-    HttpRequestMessage CreateRedirectRequest(string url, HttpRequestMessage redirected) {
+    HttpRequestMessage CreateRedirectRequest(string url, HttpRequestMessage redirected, bool preserveRequest) {
         HttpRequestMessage request = new(HttpMethod.Get, url);
         if (redirected != null) {
+            if (preserveRequest) {
+                request.Method = redirected.Method;
+                request.Content = redirected.Content;
+            }
+
             bool sameOrigin = IsSameOrigin(redirected.RequestUri, request.RequestUri);
             foreach (KeyValuePair<string, IEnumerable<string>> header in redirected.Headers) {
-                if (redirectExcludedHeaders.Contains(header.Key))
+                if (request.Content == null && redirectExcludedHeaders.Contains(header.Key))
                     continue;
                 if (!sameOrigin && SensitiveHeaders.Contains(header.Key))
                     continue;
@@ -387,24 +395,75 @@ public class HttpService : IHttpService {
         return decoded;
     }
 
+    static bool IsConsumedContentFailure(Exception error) {
+        for (Exception walk = error; walk != null; walk = walk.InnerException)
+            if (walk is InvalidOperationException)
+                return true;
+
+        return false;
+    }
+
+    static bool CarriesResponse(Exception error, HttpResponseMessage response) {
+        return error is HttpServiceException failure && ReferenceEquals(failure.Response, response);
+    }
+
+    HttpServiceException RedirectFailure(HttpResponseMessage response, HttpOptions options, string url, string reason, Exception inner = null) {
+        HttpMethod method = response.RequestMessage?.Method;
+        string repeated = method != null ? $"{method} '{DumpUrl(response)}'" : "the original request";
+        string target = url == null ? string.Empty : RedactQuery(url);
+        return new(response, $"Error repeating {repeated} on the status {(int)response.StatusCode} redirect to '{target}': {reason}\n{DumpHeaders(response, options)}", inner);
+    }
+
+    async Task<HttpResponseMessage> SendRedirect(HttpResponseMessage response, HttpOptions options, bool preserveRequest) {
+        string location = response.Headers.Location?.ToString();
+        if (options.UrlProcessor != null)
+            location = options.UrlProcessor(location);
+
+        HttpRequestMessage redirected = response.RequestMessage;
+        Uri requestUri = redirected?.RequestUri;
+        string url = requestUri != null ? new Uri(requestUri, location).ToString() : location;
+
+        if (preserveRequest) {
+            if (redirected == null)
+                throw RedirectFailure(response, options, url, "the response carries no request to repeat");
+            if (requestUri == null)
+                throw RedirectFailure(response, options, url, "the response carries no request uri to resolve the target against");
+            if (url == requestUri.ToString())
+                throw RedirectFailure(response, options, url, "the response names no target to repeat it against");
+        }
+
+        HttpRequestMessage request = CreateRedirectRequest(url, redirected, preserveRequest);
+
+        try {
+            return await SendRequest(request, options);
+        }
+        catch (Exception e) when (preserveRequest && IsConsumedContentFailure(e)) {
+            throw RedirectFailure(response, options, url, "the request body cannot be sent a second time", e);
+        }
+    }
+
+    async Task<HttpResponseMessage> FollowRedirect(HttpResponseMessage response, HttpOptions options, bool preserveRequest) {
+        HttpResponseMessage hop;
+        try {
+            hop = await SendRedirect(response, options, preserveRequest);
+        }
+        catch (Exception e) when (!CarriesResponse(e, response)) {
+            response.Dispose();
+            throw;
+        }
+
+        response.Dispose();
+        return hop;
+    }
+
     async Task<T> HandleResponse<T>(HttpResponseMessage response, HttpOptions options) {
         if (options?.FollowRedirects ?? false) {
-            if (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod) {
-                string location = response.Headers.Location?.ToString();
-                if (options.UrlProcessor != null)
-                    location = options.UrlProcessor(location);
-
-                Uri requestUri = response.RequestMessage?.RequestUri;
-                string url = requestUri != null ? new Uri(requestUri, location).ToString() : location;
-                HttpResponseMessage previousResponse = response;
-                response = await SendRequest(CreateRedirectRequest(url, previousResponse.RequestMessage), options);
-                previousResponse.Dispose();
-            }
-            else if (response.StatusCode is HttpStatusCode.RedirectKeepVerb)
-                // TODO 307/308: re-send with original method + body instead of GET
-                throw new NotSupportedException("307 redirect is not implemented yet");
+            if (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod)
+                response = await FollowRedirect(response, options, false);
+            else if (response.StatusCode is HttpStatusCode.RedirectKeepVerb or permanentRedirect)
+                response = await FollowRedirect(response, options, true);
         }
-            
+
         if (!(typeof(T) == typeof(HttpResponseMessage)))
             await CheckHttpResponse(response, options);
 
