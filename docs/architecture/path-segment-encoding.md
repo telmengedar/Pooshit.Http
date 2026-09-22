@@ -1,6 +1,7 @@
 # Architectural Document: path segment encoding in `Rest.Path` / `Rest.PathQuery`
 
 > **Repo path:** `docs/architecture/path-segment-encoding.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#10046** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#8320** · repo map root **#8292** · file node `Rest.cs` **#8308** · `QueryParameters` **#8310** · `QueryParameter` **#8309** · `HttpService` **#8297** · project **#2281** · TFM gap **#9965**.
 > **Sibling designs, none superseded:** `error-message-query-redaction.md` (#9939), `error-message-header-url-redaction.md`, `redirect-credential-policy.md`, `media-type-fallback.md`. §2.6 below explains why #9939's "never re-encode a URL" argument does **not** transfer here.
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §2 existing systems first, §3 configurability is not free, §4 less is better, §5 checklist walked in §9 of this document) · Code Contracts **#114 §0** (principles + the bounce rule) · **#1184** (no invented design questions) · **#1267** (DRY threshold math) · **#1333** (principles trump design) · **#275** (load-bearing tests) · **#6836** (expose the real structures under their real names).
