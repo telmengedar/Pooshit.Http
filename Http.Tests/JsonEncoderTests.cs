@@ -41,6 +41,23 @@ public class JsonEncoderTests {
         return sink.ToArray();
     }
 
+    static long AllocatedBy(Action action) {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        action();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    static void WarmTheSerializerAndTheEncoder(object document) {
+        Json.Write(document, Stream.Null, JsonOptions.RestApi);
+        new JsonEncoder().Encode(document).Dispose();
+    }
+
+    static long EncodeOverhead(object document) {
+        long serializer = AllocatedBy(() => Json.Write(document, Stream.Null, JsonOptions.RestApi));
+        long encode = AllocatedBy(() => new JsonEncoder().Encode(document).Dispose());
+        return encode - serializer;
+    }
+
 
     [Test, Parallelizable]
     public void Encode_SmallBody_ReportsContentLength() {
@@ -239,5 +256,19 @@ public class JsonEncoderTests {
         Assert.That(handler.RequestBodies, Has.Count.EqualTo(2));
         Assert.That(handler.RequestBodies[0], Has.Length.GreaterThan(85000));
         Assert.That(handler.RequestBodies[1], Is.EqualTo(handler.RequestBodies[0]));
+    }
+
+    [Test, Parallelizable]
+    [Description("pins that what encoding allocates beyond the serializer it runs does not grow with the document, which bounds what the constructor may hold before any byte reaches the transport")]
+    public void Encode_LargeBody_ConstructionAllocatesIndependentlyOfDocumentSize() {
+        List<ProbeDto> small = Document(overCapItems);
+        List<ProbeDto> large = Document(overCapItems * 4);
+        WarmTheSerializerAndTheEncoder(small);
+
+        long smallOverhead = EncodeOverhead(small);
+        long largeOverhead = EncodeOverhead(large);
+
+        Assert.That(largeOverhead, Is.LessThan(smallOverhead * 2),
+                    $"{overCapItems} items allocated {smallOverhead} bytes beyond the serializer, {overCapItems * 4} items allocated {largeOverhead}");
     }
 }
