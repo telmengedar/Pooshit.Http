@@ -114,7 +114,7 @@ This is the decision the whole design turns on, and §5 is the measurement that 
 | multipart form | `MultipartFormDataContent` | **yes, if every part is** — a non-seekable stream part is the exception |
 | ready-made content | caller's own `HttpContent` | **depends on the caller's object**; buffered shapes yes |
 | stream | `StreamContent` | **yes iff the stream can seek** — `StreamContent` records its start position and rewinds |
-| object encoder | `JsonEncoder` → `StringContent` (`JsonEncoder.cs:28`) | **yes** — buffered |
+| object encoder | `JsonEncoder` → `JsonContent` (`JsonContent.cs`) | **yes** — buffered below the 85 KB cap, re-serialised from the source object above it |
 
 **Cost of D2: zero on the happy path.** No allocation, no copy, no memory ceiling, and a streaming upload still streams on hop 0. The content headers — `Content-Type`, `Content-Length`, `Content-Disposition`, the multipart boundary — ride along for free, because they live on the content object rather than on the request's header collection. That is also the reason `redirectExcludedHeaders` only ever needed to name `Expect` and `Transfer-Encoding` (D5).
 
