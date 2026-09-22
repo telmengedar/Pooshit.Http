@@ -187,6 +187,24 @@ public class HttpServiceStatusBandTests {
         Assert.That(result?.Value, Is.EqualTo("hello"));
     }
 
+    [Parallelizable]
+    [TestCase(100)]
+    [TestCase(101)]
+    [TestCase(199)]
+    [Description("DiVoid #14585: the success band's lower edge and the redirect clause's own lower gate are both observable only below 200, and neither was pinned")]
+    public void Get_Status1xx_Throws(int status) {
+        using HttpResponseMessage response = Empty((HttpStatusCode)status);
+
+        SequenceHandler handler = new(response);
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Get<string>("https://example.test/probe"))!;
+
+        Assert.That((int)error.Response.StatusCode, Is.EqualTo(status));
+        Assert.That(error.Message, Does.Not.Contain("a redirect to"));
+    }
+
     [Test, Parallelizable]
     public async Task Get_Status299_StillSucceeds() {
         using HttpResponseMessage response = new((HttpStatusCode)299) { Content = new StringContent("done") };
