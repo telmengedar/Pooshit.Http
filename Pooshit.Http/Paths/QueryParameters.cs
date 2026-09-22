@@ -43,7 +43,10 @@ public class QueryParameters {
     /// <param name="name">parameter key</param>
     public object this[string name] {
         get { return parameters.FirstOrDefault(p => p.Name == name).Value; }
-        set => Add(name, value);
+        set {
+            Remove(name);
+            Add(name, value);
+        }
     }
         
     /// <summary>
@@ -92,7 +95,7 @@ public class QueryParameters {
     /// <param name="value">value to check for</param>
     /// <returns>true if queryparameters contain a parameter with the specified name and value, false otherwise</returns>
     public bool Contains(string name, object value) {
-        return parameters.Any(p => p.Name == name && p.Value == value);
+        return parameters.Any(p => p.Name == name && Equals(p.Value, value));
     }
 
     /// <summary>
