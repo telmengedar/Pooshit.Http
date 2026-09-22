@@ -40,7 +40,7 @@ public class HttpOptions {
     public bool? ExpectContinue { get; set; }
         
     /// <summary>
-    /// if set this function is used to process urls before requests
+    /// if set, resolves the target of a redirect hop: called with the location the response named, or with null when it named none, and returns the target to use or null to decline, which is then handled as though the response had named no target; runs on the redirect path only, before the target is resolved against the request url and therefore before the same origin decision which governs whether <see cref="HttpService.SensitiveHeaders"/> ride the hop; an exception it throws reaches the caller unchanged
     /// </summary>
     public Func<string, string> UrlProcessor { get; set; }
 
