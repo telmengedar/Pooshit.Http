@@ -25,6 +25,16 @@ public class JsonEncoderTests {
 
     static byte[] Serialized(object document) => Encoding.UTF8.GetBytes(Json.WriteString(document, JsonOptions.RestApi));
 
+    static long LargestReadLag(List<long> reads, int documentBytes) {
+        long largest = 0;
+        for (int index = 0; index < reads.Count; ++index) {
+            long lag = (long)index * documentBytes / reads.Count - reads[index];
+            if (lag > largest)
+                largest = lag;
+        }
+        return largest;
+    }
+
     static async Task<byte[]> Drain(HttpContent content) {
         MemoryStream sink = new();
         await content.CopyToAsync(sink);
@@ -140,7 +150,7 @@ public class JsonEncoderTests {
 
 
     [Test, Parallelizable]
-    [Description("pins that an over-cap document is read from the object graph while its bytes are already on the wire, which no implementation serializing the whole document before its first write can satisfy")]
+    [Description("pins that no element of an over-cap document is read while more than an eighth of the document is still held back, which bounds the run any implementation may materialise before its bytes reach the transport")]
     public async Task Encode_LargeBody_ReadsTheDocumentWhileWritingIt() {
         WriteRecordingSink sink = new();
         List<long> reads = new();
@@ -155,7 +165,7 @@ public class JsonEncoderTests {
 
         Assert.That(sink.BytesWritten, Is.EqualTo(documentBytes));
         Assert.That(reads, Has.Count.EqualTo(overCapItems));
-        Assert.That(reads[^1], Is.GreaterThan(documentBytes / 2));
+        Assert.That(LargestReadLag(reads, documentBytes), Is.LessThan(documentBytes / 8));
     }
 
 
