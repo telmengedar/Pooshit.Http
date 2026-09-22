@@ -127,6 +127,30 @@ public class QueryParametersTests {
     }
 
     [Test, Parallelizable]
+    [Description("DiVoid #8322: clearing removes every entry carrying the name, so a key built by repeated Add clears completely rather than leaving the later entry standing")]
+    public void Indexer_AssigningNullToAKeyAddedTwice_ClearsEveryEntry() {
+        QueryParameters parameters = new();
+        parameters.Add("k", 1);
+        parameters.Add("k", 2);
+        parameters["k"] = null;
+
+        Assert.That(parameters.Parameters.Count(), Is.EqualTo(0));
+        Assert.That(parameters.ToString(), Is.EqualTo(""));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #8322: Add drops the empty string as it drops null, so assigning it removes every entry carrying the name exactly as null does")]
+    public void Indexer_AssigningAnEmptyStringToAKeyAddedTwice_ClearsEveryEntry() {
+        QueryParameters parameters = new();
+        parameters.Add("k", 1);
+        parameters.Add("k", 2);
+        parameters["k"] = "";
+
+        Assert.That(parameters.Parameters.Count(), Is.EqualTo(0));
+        Assert.That(parameters.ToString(), Is.EqualTo(""));
+    }
+
+    [Test, Parallelizable]
     public void Add_CalledTwiceForOneName_StillAppends() {
         QueryParameters parameters = new();
         parameters.Add("k", 1);
