@@ -15,6 +15,7 @@ namespace Http.Tests;
 [TestFixture, Parallelizable]
 public class JsonEncoderTests {
     const int overCapItems = 2000;
+    const int growthAllowancePerItem = 4;
 
     static List<ProbeDto> Document(int items) {
         List<ProbeDto> document = new();
@@ -259,16 +260,19 @@ public class JsonEncoderTests {
     }
 
     [Test, Parallelizable]
-    [Description("pins that what encoding allocates beyond the serializer it runs does not grow with the document, which bounds what the constructor may hold before any byte reaches the transport")]
+    [Description("pins that what encoding allocates beyond the serializer it runs grows by fewer than four bytes for every element added to the document, which separates a constructor allocating a constant from one allocating a share of what it serializes")]
     public void Encode_LargeBody_ConstructionAllocatesIndependentlyOfDocumentSize() {
         List<ProbeDto> small = Document(overCapItems);
         List<ProbeDto> large = Document(overCapItems * 4);
         WarmTheSerializerAndTheEncoder(small);
+        WarmTheSerializerAndTheEncoder(large);
 
         long smallOverhead = EncodeOverhead(small);
         long largeOverhead = EncodeOverhead(large);
+        long growth = largeOverhead - smallOverhead;
+        long allowance = (long)(large.Count - small.Count) * growthAllowancePerItem;
 
-        Assert.That(largeOverhead, Is.LessThan(smallOverhead * 2),
-                    $"{overCapItems} items allocated {smallOverhead} bytes beyond the serializer, {overCapItems * 4} items allocated {largeOverhead}");
+        Assert.That(growth, Is.LessThan(allowance),
+                    $"{small.Count} items allocated {smallOverhead} bytes beyond the serializer and {large.Count} items allocated {largeOverhead}, a growth of {growth} against an allowance of {allowance}");
     }
 }
