@@ -254,21 +254,20 @@ public class HttpService : IHttpService {
         return url == null ? string.Empty : RedactQuery(url);
     }
 
-    void DumpHeader(StringBuilder builder, KeyValuePair<string, IEnumerable<string>> header, HeaderDumpMode mode) {
-        builder.Append(header.Key).Append(": ");
+    string DumpHeaderValue(string name, IEnumerable<string> values, HeaderDumpMode mode) {
         if (mode == HeaderDumpMode.Redacted) {
-            if (SensitiveHeaders.Contains(header.Key)) {
-                builder.AppendLine("<redacted>");
-                return;
-            }
+            if (SensitiveHeaders.Contains(name))
+                return "<redacted>";
 
-            if (urlValuedHeaders.Contains(header.Key)) {
-                builder.AppendLine(string.Join("; ", header.Value.Select(RedactQuery)));
-                return;
-            }
+            if (urlValuedHeaders.Contains(name))
+                return string.Join("; ", values.Select(RedactQuery));
         }
 
-        builder.AppendLine(string.Join("; ", header.Value));
+        return string.Join("; ", values);
+    }
+
+    void DumpHeader(StringBuilder builder, KeyValuePair<string, IEnumerable<string>> header, HeaderDumpMode mode) {
+        builder.Append(header.Key).Append(": ").AppendLine(DumpHeaderValue(header.Key, header.Value, mode));
     }
 
     string DumpHeaders(HttpResponseMessage response, HttpOptions options) {
@@ -292,11 +291,26 @@ public class HttpService : IHttpService {
         return client.SendAsync(request, options?.CompletionOption ?? HttpCompletionOption.ResponseContentRead);
     }
 
+    string DumpRedirect(HttpResponseMessage response, HttpOptions options) {
+        if ((int)response.StatusCode < 300 || (int)response.StatusCode > 399)
+            return string.Empty;
+
+        HeaderDumpMode mode = options?.HeaderDumpMode ?? HeaderDumpMode;
+        string target;
+        if (!response.Headers.TryGetValues("Location", out IEnumerable<string> location))
+            target = "no location";
+        else if (mode == HeaderDumpMode.Omitted)
+            target = "an undisclosed location";
+        else target = $"'{DumpHeaderValue("Location", location, mode)}'";
+
+        return $", a redirect to {target} which was not followed; set HttpOptions.FollowRedirects to follow it, or request HttpResponseMessage to read the response yourself";
+    }
+
     async Task CheckHttpResponse(HttpResponseMessage response, HttpOptions options) {
-        if ((int)response.StatusCode < 200 || (int)response.StatusCode > 399) {
+        if ((int)response.StatusCode < 200 || (int)response.StatusCode > 299) {
             using StreamReader reader = new(await response.Content.ReadAsStreamAsync());
             string responseBody = await reader.ReadToEndAsync();
-            throw new HttpServiceException(response, $"Error sending request to '{DumpUrl(response)}' -> status {response.StatusCode}\n{DumpHeaders(response, options)}", body: string.IsNullOrEmpty(responseBody) ? null : responseBody);
+            throw new HttpServiceException(response, $"Error sending request to '{DumpUrl(response)}' -> status {response.StatusCode}{DumpRedirect(response, options)}\n{DumpHeaders(response, options)}", body: string.IsNullOrEmpty(responseBody) ? null : responseBody);
         }
     }
 

@@ -1092,17 +1092,18 @@ public class HttpServiceRedirectTests {
     }
 
     [Test, Parallelizable]
-    [Description("DiVoid #8316: an unfollowed 3xx stays silent, which this change deliberately does not address")]
-    public async Task Get308_FollowRedirectsFalse_StillReturnsDefault() {
+    [Description("DiVoid #8316: leaving redirect following off does not make a redirect silent")]
+    public void Get308_FollowRedirectsFalse_Throws() {
         using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = new StringContent(string.Empty) };
         redirect.Headers.Location = new Uri("https://other-host.example/target");
 
         SequenceHandler handler = new(redirect);
         HttpService service = new(handler);
 
-        string? result = await service.Get<string>("https://original-host.example/start");
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Get<string>("https://original-host.example/start"))!;
 
-        Assert.That(result, Is.Null);
         Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
     }
 }
