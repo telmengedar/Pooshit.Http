@@ -1106,4 +1106,95 @@ public class HttpServiceRedirectTests {
         Assert.That(handler.Requests, Has.Count.EqualTo(1));
         Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
     }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14559: the processor resolves a target rather than rewriting one, so it is asked even when the response named none")]
+    public void Post308_NoLocation_UrlProcessorReceivesNull() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = new StringContent(string.Empty) };
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        List<string> seen = [];
+
+        Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body",
+                                               new HttpOptions {
+                                                                   FollowRedirects = true,
+                                                                   UrlProcessor = location => {
+                                                                                      seen.Add(location);
+                                                                                      return location;
+                                                                                  }
+                                                               }));
+
+        Assert.That(seen, Has.Count.EqualTo(1));
+        Assert.That(seen[0], Is.Null);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14559: a processor may name a target the response did not, and the hop uses what it named; its processor is idempotent by design")]
+    public async Task Post308_NoLocation_UrlProcessorSynthesisesTarget_HopUsesIt() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = new StringContent(string.Empty) };
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        string result = await service.Post<string, string>("https://original-host.example/start", "body",
+                                                          new HttpOptions {
+                                                                              FollowRedirects = true,
+                                                                              UrlProcessor = location => location ?? "https://fallback-host.example/target"
+                                                                          });
+
+        Assert.That(result, Is.EqualTo("done"));
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://fallback-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14559: returning null declines the hop, and the library's own no-target handling is what backstops it")]
+    public void Post308_UrlProcessorReturnsNull_FailsWithNoTarget() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = new StringContent(string.Empty) };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body",
+                                               new HttpOptions { FollowRedirects = true, UrlProcessor = _ => null }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.Message, Does.Contain("the response names no target to repeat it against"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14559: the contract is a property of the seam, so it does not differ between the two redirect arms")]
+    public async Task Get302_NoLocation_UrlProcessorReceivesNull() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { Content = new StringContent(string.Empty) };
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        List<string> seen = [];
+
+        await service.Get<string>("https://original-host.example/start",
+                                  new HttpOptions {
+                                                      FollowRedirects = true,
+                                                      UrlProcessor = location => {
+                                                                         seen.Add(location);
+                                                                         return location;
+                                                                     }
+                                                  });
+
+        Assert.That(seen, Has.Count.EqualTo(1));
+        Assert.That(seen[0], Is.Null);
+    }
 }
