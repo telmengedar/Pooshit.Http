@@ -489,4 +489,620 @@ public class HttpServiceRedirectTests {
         Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
         Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.EqualTo(new[] { "Bearer caller-token" }));
     }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14513: a 308 matched no redirect arm and returned a silent null where the request had to be repeated")]
+    public async Task Post308_HopRepeatsPostWithSameBody() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        string result = await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(result, Is.EqualTo("done"));
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("POST"));
+        Assert.That(handler.Requests[1].Content, Is.Not.Null);
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://other-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    public async Task Post307_HopRepeatsPostWithSameBody() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.RedirectKeepVerb);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        string result = await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(result, Is.EqualTo("done"));
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("POST"));
+        Assert.That(handler.Requests[1].Content, Is.Not.Null);
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://other-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    public async Task Post308_BodyBytesAreIdenticalOnBothHops() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        MemoryStream body = new("seekable-body-bytes"u8.ToArray());
+
+        await service.Post<Stream, string>("https://original-host.example/start", body, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.RequestBodies, Has.Count.EqualTo(2));
+        Assert.That(handler.RequestBodies[0], Is.EqualTo("seekable-body-bytes"u8.ToArray()));
+        Assert.That(handler.RequestBodies[1], Is.EqualTo("seekable-body-bytes"u8.ToArray()));
+    }
+
+    [Test, Parallelizable]
+    public async Task Post308_ContentTypeRidesTheHop() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[0].Content!.Headers.ContentType!.MediaType, Is.EqualTo("application/json"));
+        Assert.That(handler.Requests[1].Content!.Headers.ContentType!.MediaType, Is.EqualTo("application/json"));
+    }
+
+    [Test, Parallelizable]
+    public void Post308_NonSeekableStreamBody_ThrowsHttpServiceException() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        NonSeekableStream body = new("one-shot-body"u8.ToArray());
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<Stream, string>("https://original-host.example/start", body, new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.RequestBodies[0], Is.EqualTo("one-shot-body"u8.ToArray()));
+        Assert.That(error.InnerException, Is.TypeOf<HttpRequestException>());
+        Assert.That(error.InnerException!.InnerException, Is.TypeOf<InvalidOperationException>());
+        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
+        Assert.That(error.Message, Does.Contain("the request body cannot be sent a second time"));
+        Assert.That(error.Message, Does.Contain("POST"));
+        Assert.That(error.Message, Does.Contain("308"));
+        Assert.That(error.Message, Does.Contain("https://other-host.example/target"));
+        Assert.That(error.Message, Does.Contain("https://original-host.example/start"));
+    }
+
+    [Test, Parallelizable]
+    public void Post308_WithoutLocation_ThrowsAndSendsNoSecondRequest() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.InnerException, Is.Null);
+        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
+        Assert.That(error.Message, Does.Contain("the response names no target to repeat it against"));
+        Assert.That(redirectContent.Disposed, Is.False);
+    }
+
+    [Test, Parallelizable]
+    public void Post308_UnstampedResponse_ThrowsInsteadOfDowngrading() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final) { StampRequestMessage = false };
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
+        Assert.That(error.Message, Does.Contain("Error repeating the original request"));
+        Assert.That(error.Message, Does.Contain("the response carries no request to repeat"));
+        Assert.That(redirectContent.Disposed, Is.False);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9633: the credential strip is a property of the target origin, so it survives a hop which now carries the body across it")]
+    public async Task Post308_CrossOrigin_AuthorizationStrippedWhileBodyRides() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Post<string, string>("https://original-host.example/start", "body",
+                                           new HttpOptions { FollowRedirects = true, TokenProvider = new CountingTokenProvider("url-overload-token") });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "Authorization"), Is.EqualTo(new[] { "Bearer url-overload-token" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Authorization"), Is.Empty);
+        Assert.That(handler.Requests[1].Content, Is.Not.Null);
+        Assert.That(handler.RequestBodies[1], Is.EqualTo("\"body\""u8.ToArray()));
+    }
+
+    [Test, Parallelizable]
+    public async Task Post308_ExpectContinueSurvivesTheBodyCarryingHop() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Post<string, string>("https://original-host.example/start", "body",
+                                           new HttpOptions { FollowRedirects = true, ExpectContinue = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(HeaderValues(handler.Requests[0], "Expect"), Is.EqualTo(new[] { "100-continue" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Expect"), Is.EqualTo(new[] { "100-continue" }));
+    }
+
+    [Test, Parallelizable]
+    public async Task Get308_BodylessHop_StillDropsBodyDescriptor() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpRequestMessage request = new(HttpMethod.Get, "https://original-host.example/start");
+        request.Headers.TransferEncodingChunked = true;
+        request.Headers.TryAddWithoutValidation("X-Caller-Marker", "caller-header-value");
+
+        await service.Send<string>(request, new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("GET"));
+        Assert.That(handler.Requests[1].Content, Is.Null);
+        Assert.That(HeaderValues(handler.Requests[0], "Transfer-Encoding"), Is.EqualTo(new[] { "chunked" }));
+        Assert.That(HeaderValues(handler.Requests[1], "Transfer-Encoding"), Is.Empty);
+        Assert.That(HeaderValues(handler.Requests[1], "X-Caller-Marker"), Is.EqualTo(new[] { "caller-header-value" }));
+    }
+
+    [Test, Parallelizable]
+    public void Post308_HopFailsWithAnUnrelatedTransportError_IsNotReportedAsAnUnreplayableBody() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        SingleUseContent body = new("single-use-body"u8.ToArray(), new IOException("the connection was reset"));
+
+        HttpRequestException error = Assert.ThrowsAsync<HttpRequestException>(
+            () => service.Post<HttpContent, string>("https://original-host.example/start", body, new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.RequestBodies[0], Is.EqualTo("single-use-body"u8.ToArray()));
+        Assert.That(error.InnerException!.InnerException, Is.TypeOf<IOException>());
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14530: an exception the failure translation does not match carries no response to the caller, so the superseded one has to be released here")]
+    public void Post308_HopFailsWithAnUnrelatedTransportError_DisposesTheSupersededResponse() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        SingleUseContent body = new("single-use-body"u8.ToArray(), new IOException("the connection was reset"));
+
+        HttpRequestException error = Assert.ThrowsAsync<HttpRequestException>(
+            () => service.Post<HttpContent, string>("https://original-host.example/start", body, new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(error.InnerException!.InnerException, Is.TypeOf<IOException>());
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14530: a stamped request without a uri leaves no origin to resolve the target against, and the arm must say so rather than dereference it")]
+    public void Post308_ResponseStampedWithoutRequestUri_ThrowsInsteadOfFailingToResolve() {
+        HttpRequestMessage stampedWithoutUri = new();
+        stampedWithoutUri.Headers.TryAddWithoutValidation("X-Caller-Marker", "caller-header-value");
+
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { RequestMessage = stampedWithoutUri, Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final) { StampRequestMessage = false };
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
+        Assert.That(error.Message, Does.Contain("the response carries no request uri to resolve the target against"));
+        Assert.That(redirectContent.Disposed, Is.False);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9939: the redirect failure message is a new error surface, so the target it names is query-redacted like every other")]
+    public void Post308_NonSeekableStreamBody_FailureMessageRedactsTheTargetQuery() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target?token=super-secret-value&page=2");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        NonSeekableStream body = new("one-shot-body"u8.ToArray());
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<Stream, string>("https://original-host.example/start", body,
+                                               new HttpOptions { FollowRedirects = true, HeaderDumpMode = HeaderDumpMode.Omitted }))!;
+
+        Assert.That(error.Message, Does.Contain("token=<redacted>"));
+        Assert.That(error.Message, Does.Contain("page=2"));
+        Assert.That(error.Message, Does.Not.Contain("super-secret-value"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14516 D3: the superseded response is handed over live so the caller can read the location it could not follow")]
+    public void Post308_NonSeekableStreamBody_LeavesTheSupersededResponseUndisposed() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        NonSeekableStream body = new("one-shot-body"u8.ToArray());
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<Stream, string>("https://original-host.example/start", body, new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(redirectContent.Disposed, Is.False);
+        Assert.That(error.Response, Is.SameAs(redirect));
+        Assert.That(error.Response.Headers.Location, Is.EqualTo(new Uri("https://other-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    public async Task Post308_SupersededRedirectResponseIsDisposed() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14516 section 6.2: UrlProcessor is the caller's mitigation for the body now crossing the origin, so it has to run on the arm that carries it")]
+    public async Task Post308_UrlProcessorIsAppliedBeforeUriResolution() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target?raw=1");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        await service.Post<string, string>("https://original-host.example/start", "body",
+                                           new HttpOptions {
+                                                               FollowRedirects = true,
+                                                               UrlProcessor = location => new Uri(location).GetLeftPart(UriPartial.Path)
+                                                           });
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://other-host.example/target")));
+        Assert.That(handler.Requests[1].Content, Is.Not.Null);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14530: the body-replay diagnosis belongs to the arm that replays a body, so a failing legacy hop must not borrow it")]
+    public void Get302_HopSendFails_IsNotReportedAsAnUnreplayableBody() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        SequenceHandler handler = new(redirect);
+        HttpService service = new(handler);
+
+        Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.Get<string>("https://original-host.example/start", new HttpOptions { FollowRedirects = true }));
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].Content, Is.Null);
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14538: UrlProcessor is caller code running on the redirect path, so a throw out of it must not strand the superseded response")]
+    public void Post308_UrlProcessorThrows_DisposesTheSupersededResponse() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body",
+                                               new HttpOptions {
+                                                                   FollowRedirects = true,
+                                                                   UrlProcessor = _ => throw new InvalidOperationException("processor refused the location")
+                                                               }));
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9617: the redirect failure message is a new DumpHeaders call site, so the configured redaction governs it like every other")]
+    public void Post308_FailureMessage_CarriesTheHeaderBlockUnderTheConfiguredMode() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.TryAddWithoutValidation("Set-Cookie", "session=cookie-secret-value");
+        redirect.Headers.TryAddWithoutValidation("X-Trace-Marker", "trace-header-value");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(error.Message, Does.Contain("Response Headers"));
+        Assert.That(error.Message, Does.Contain("Set-Cookie: <redacted>"));
+        Assert.That(error.Message, Does.Contain("X-Trace-Marker: trace-header-value"));
+        Assert.That(error.Message, Does.Not.Contain("cookie-secret-value"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #9617: a per-call dump mode has to reach the redirect failure site, or a caller who quietened this call still gets the service default")]
+    public void Post308_FailureMessage_PerCallDumpModeOverridesTheServiceDefault() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.TryAddWithoutValidation("X-Trace-Marker", "trace-header-value");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler) { HeaderDumpMode = HeaderDumpMode.Full };
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body",
+                                               new HttpOptions { FollowRedirects = true, HeaderDumpMode = HeaderDumpMode.Omitted }))!;
+
+        Assert.That(error.Message, Does.Contain("the response names no target to repeat it against"));
+        Assert.That(error.Message, Does.Not.Contain("Response Headers"));
+        Assert.That(error.Message, Does.Not.Contain("trace-header-value"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14546: the exemption is for an exception carrying this response, not for every exception of a type that could carry one")]
+    public void Post308_UrlProcessorThrowsHttpServiceException_DisposesTheSupersededResponse() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+        using HttpResponseMessage unrelated = new(HttpStatusCode.NotFound);
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body",
+                                               new HttpOptions {
+                                                                   FollowRedirects = true,
+                                                                   UrlProcessor = _ => throw new HttpServiceException(unrelated, "discovery lookup failed")
+                                                               }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.Response, Is.SameAs(unrelated));
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    public async Task Post301_HopIsIssuedAsGetWithoutBody() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.Moved);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        string result = await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(result, Is.EqualTo("done"));
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("GET"));
+        Assert.That(handler.Requests[1].Content, Is.Null);
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://other-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    public async Task Post303_HopIsIssuedAsGetWithoutBody() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.RedirectMethod);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        string result = await service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(result, Is.EqualTo("done"));
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(handler.Requests[1].Method.Method, Is.EqualTo("GET"));
+        Assert.That(handler.Requests[1].Content, Is.Null);
+        Assert.That(handler.RequestedUris[1], Is.EqualTo(new Uri("https://other-host.example/target")));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14538: a location that will not resolve fails before any hop, on both arms, and still releases the response it superseded")]
+    public void Get302_LocationDoesNotResolve_DisposesTheSupersededResponse() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        Assert.ThrowsAsync<UriFormatException>(
+            () => service.Get<string>("https://original-host.example/start",
+                                      new HttpOptions { FollowRedirects = true, UrlProcessor = _ => "http://" }));
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14538: building the hop request is the last thing that can fail before the send, and it releases the superseded response like every other failure")]
+    public void Get302_RedirectRequestCannotBeBuilt_DisposesTheSupersededResponse() {
+        ProbeContent redirectContent = new("superseded"u8.ToArray());
+        using HttpResponseMessage redirect = new(HttpStatusCode.Redirect) { Content = redirectContent };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final) { StampRequestMessage = false };
+        HttpService service = new(handler);
+
+        Assert.ThrowsAsync<UriFormatException>(
+            () => service.Get<string>("https://original-host.example/start",
+                                      new HttpOptions { FollowRedirects = true, UrlProcessor = _ => "http://" }));
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(redirectContent.Disposed, Is.True);
+    }
+
+    [Test, Parallelizable]
+    public void Post308_ExhaustionSignalledAtTheOutermostLevel_IsTranslated() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        SequenceHandler handler = new(redirect);
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(error.InnerException, Is.TypeOf<InvalidOperationException>());
+        Assert.That(error.Message, Does.Contain("the request body cannot be sent a second time"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14516 D3: ObjectDisposedException is inside the net by inheritance, and it is how a runtime that disposes request content after a send is meant to degrade")]
+    public void Post308_ExhaustionSignalledThreeLevelsDeep_IsTranslated() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect);
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final);
+        HttpService service = new(handler);
+
+        SingleUseContent body = new("single-use-body"u8.ToArray(), new ObjectDisposedException("request content"));
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<HttpContent, string>("https://original-host.example/start", body, new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(2));
+        Assert.That(error.InnerException, Is.TypeOf<HttpRequestException>());
+        Assert.That(error.InnerException!.InnerException, Is.TypeOf<HttpRequestException>());
+        Assert.That(error.InnerException.InnerException!.InnerException, Is.TypeOf<ObjectDisposedException>());
+        Assert.That(error.Message, Does.Contain("the request body cannot be sent a second time"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14538: on a path whose only product is a diagnosis, the guards have to fire in the order that names the real cause")]
+    public void Post308_WithoutRequestUriAndWithoutLocation_ReportsTheMissingRequestUri() {
+        HttpRequestMessage stampedWithoutUri = new();
+
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { RequestMessage = stampedWithoutUri };
+
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(redirect, final) { StampRequestMessage = false };
+        HttpService service = new(handler);
+
+        HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
+            () => service.Post<string, string>("https://original-host.example/start", "body", new HttpOptions { FollowRedirects = true }))!;
+
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+        Assert.That(error.Message, Does.Contain("the response carries no request uri to resolve the target against"));
+        Assert.That(error.Message, Does.Contain("redirect to ''"));
+        Assert.That(error.Message, Does.Not.Contain("names no target"));
+    }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #8316: an unfollowed 3xx stays silent, which this change deliberately does not address")]
+    public async Task Get308_FollowRedirectsFalse_StillReturnsDefault() {
+        using HttpResponseMessage redirect = new(HttpStatusCode.PermanentRedirect) { Content = new StringContent(string.Empty) };
+        redirect.Headers.Location = new Uri("https://other-host.example/target");
+
+        SequenceHandler handler = new(redirect);
+        HttpService service = new(handler);
+
+        string? result = await service.Get<string>("https://original-host.example/start");
+
+        Assert.That(result, Is.Null);
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+    }
 }

@@ -66,7 +66,7 @@ Named here so their absence is a decision, not an oversight. The repo map surfac
 |---|---|
 | Inferring the completion behaviour from the requested response type. | **Deliberately rejected for this phase** — see §8.2. Recorded as a candidate, not a design element. |
 | The result-less no-body post member not validating status. | Out of scope. Do **not** add a status check. §5.4 covers only its disposal. |
-| The forced-GET on 301/302/303, the unimplemented 307/308, and the absence of a multi-hop follower. | Out of scope. The redirect **URL resolution** defect is already fixed on master (PR #2) — do not re-fix it. |
+| The forced-GET on 301/302/303, ~~the unimplemented 307/308~~ (**CORRECTED 2026-09-22:** 307/308 are now implemented and followed with the original method and body — see `docs/architecture/verb-preserving-redirect.md` (DiVoid **#14516**, task **#14513**); the forced-GET and the missing multi-hop follower are unchanged, DiVoid **#8323**), and the absence of a multi-hop follower. | Out of scope. The redirect **URL resolution** defect is already fixed on master (PR #2) — do not re-fix it. |
 | Exact-string media-type matching, and the invalid-cast that an unrecognised media type produces. | Out of scope. |
 | The decode-failure exception being constructed inside the disposing scope, so it carries a disposed response. | Out of scope. Noted in §5.2 as unchanged, not worsened. |
 | Synchronous reads (the XML branch's document load, the decoder's sync member) becoming blocking network reads under the opt-in. | Out of scope as a fix; **documented** in §5.2 and §9.2 as a known consequence. |
@@ -242,7 +242,7 @@ Status validation is shaped as *"if the status falls outside the accepted band, 
 |---|---|
 | Only a single hop is followed; a second redirect in a chain is not followed. | Unchanged. A second redirect falls through to validation, which accepts the 3xx band as success, then reaches the typed read. Under the opt-in with a stream or raw-message request, handing back that 3xx is the correct passthrough outcome. Under buffering nothing changes (A2 keeps the guard's behaviour identical). |
 | 301/302/303 are all re-sent as GET. | Unchanged. |
-| 307/308 throw. | Unchanged — and the throw happens before any send, so no completion concern. |
+| ~~307/308 throw.~~ **CORRECTED 2026-09-22:** 307/308 are now followed, preserving the original method and body (`docs/architecture/verb-preserving-redirect.md` (DiVoid **#14516**, task **#14513**)). | ~~Unchanged — and the throw happens before any send, so no completion concern.~~ **The completion concern is now live, and is already satisfied:** the verb-preserving hop goes through the same single send helper as the legacy hop (verified by reading `HttpService.FollowRedirect` at the merge), so `HttpOptions.CompletionOption` carries to it exactly as this design's (2) established for 301/302/303. No change is required here. |
 | Absence of a hop-count limit. | Unchanged, and mildly **improved**: the disposal in (2) means a followed hop no longer strands a connection. |
 
 ---
@@ -493,7 +493,7 @@ Per #2928 §7, the recurring first-pass miss is always *a branch gated by a spec
 | T-R1 | Follow-redirects on, a 302 | Two requests issued; the existing URL-resolution tests on master still pass unmodified |
 | T-R2 | Follow-redirects on, a 302, streaming option | The **second** response also honours the option (zero bytes read) |
 | T-R3 | Follow-redirects on, a 302, streaming option | The **superseded** response is disposed |
-| T-R4 | Follow-redirects on, a 307 | Still throws the not-supported error; no second request issued |
+| ~~T-R4~~ | Follow-redirects on, a 307 | ~~Still throws the not-supported error; no second request issued~~ — **RETIRED 2026-09-22.** The throw is gone; a 307 is now followed (`docs/architecture/verb-preserving-redirect.md` (DiVoid **#14516**, task **#14513**)). Retained per #11228 Lesson 3. **Separately, and pre-existing: this row was specified and never implemented.** No test in the suite ever asserted `NotSupportedException` for a 307, so removing the throw broke nothing and the suite went green from 307 to 319 tests. Not caused by that change; recorded here because a coverage table asserting a guard that does not exist reads as coverage. |
 | T-R5 | Follow-redirects **off**, a 302 | No second request; the 3xx flows to validation |
 | T-R6 | Follow-redirects on, a non-redirect status | No second request |
 
