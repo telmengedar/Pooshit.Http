@@ -1197,4 +1197,18 @@ public class HttpServiceRedirectTests {
         Assert.That(seen, Has.Count.EqualTo(1));
         Assert.That(seen[0], Is.Null);
     }
+
+    [Test, Parallelizable]
+    [Description("DiVoid #14588: opting into following does not make the library hop on a status it does not follow")]
+    public async Task Get200_FollowRedirectsTrue_IssuesOneRequest() {
+        using HttpResponseMessage final = new(HttpStatusCode.OK) { Content = new StringContent("done") };
+
+        SequenceHandler handler = new(final);
+        HttpService service = new(handler);
+
+        string? result = await service.Get<string>("https://original-host.example/start", new HttpOptions { FollowRedirects = true });
+
+        Assert.That(result, Is.EqualTo("done"));
+        Assert.That(handler.Requests, Has.Count.EqualTo(1));
+    }
 }
