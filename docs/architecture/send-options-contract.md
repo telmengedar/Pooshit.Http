@@ -1,6 +1,7 @@
 # Architectural Document: what `HttpOptions` means on `Send`
 
 > **Repo path:** `docs/architecture/send-options-contract.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#9618** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#9609** · project **#2281** · repo map root **#8292** · `HttpService` **#8297** · `HttpOptions` **#8299** · `IHttpService` **#8298** · how-to-extend **#8314** · request lifecycle **#8311**.
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §4 less is better, §5 checklist) · Code Contracts **#114** §0.
 > **Baseline:** `origin/master` @ `21152e4`. Package version on master: `0.9.0-preview`; this change ships `0.9.1-preview`.

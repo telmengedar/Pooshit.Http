@@ -1,6 +1,7 @@
 # Architectural Document: The media-type fallback — decode what arrived, or say why you cannot
 
 > **Repo path:** `docs/architecture/media-type-fallback.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#9661** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#9615** · consumer-side consequence **#9598** · repo map root **#8292** · response-type dispatch model **#8312** · buffering vs streaming **#8313** · handle lifetime **#8311** · decoders **#8305** / **#8307** · project **#2281**.
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §2 existing systems first, §3 configurability, §4 less is better, §5 Pre-Design Checklist) and Code Contracts **#114 §0** (implementer-side principles + the bounce rule).
 > **Baseline:** designed against `master` @ `cb50a50` (PR #7, cross-origin credential stripping, merged). Package version on master: `0.9.2-preview`.

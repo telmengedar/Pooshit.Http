@@ -1,6 +1,7 @@
 # Architectural Document: True Passthrough — an opt-in response completion option
 
 > **Repo path:** `docs/architecture/true-passthrough-completion-option.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#8328** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#8290** · diagnosis + measurements **#7959** · consumer-side adoption (blocked on this) **#7961** · error-body precedent **#2279** · repo map root **#8292** · project **#2281**.
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §5 Pre-Design Checklist) and Code Contracts **#114 §0** (implementer-side principles + the bounce rule).
 > **Baseline:** designed against `origin/master` @ `4058425` (both PR #1 — `HttpServiceException.Body` — and PR #2 — redirect `Uri` combining — are merged). Package version on master: `0.7.18-preview`.

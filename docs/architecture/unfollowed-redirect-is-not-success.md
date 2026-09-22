@@ -1,6 +1,7 @@
 # Architectural Document: an unfollowed redirect is not a success
 
 > **Repo path:** `docs/architecture/unfollowed-redirect-is-not-success.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#14574** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#8316** (severity 4) · project **#2281** · repo map root **#8292** · `HttpService` **#8297** · request lifecycle **#8311** stage 4.2 · sibling limits **#8323** · downstream consumer **#8916** (*not in scope — see §2*).
 > **Predecessor:** **#14516** / `docs/architecture/verb-preserving-redirect.md`. **Its §2.2 is falsified by this document** — see §1.2, which is the most load-bearing section here.
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §2 existing systems first, §3 configurability is not free, §4 less is better, §5 checklist, §6 anti-patterns) · Code Contracts **#114** §0 · YAGNI **#1184** · falsifiable universals **#9951** and the discriminator rule from #14516 §D7.2.

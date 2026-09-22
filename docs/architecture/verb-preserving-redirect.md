@@ -1,6 +1,7 @@
 # Architectural Document: the verb-preserving redirect hop (307 / 308)
 
 > **Repo path:** `docs/architecture/verb-preserving-redirect.md` (repository `telmengedar/Pooshit.Http`).
+> **Node:** **#14516** — this document's own DiVoid node, maintained as a byte copy of this file.
 > **DiVoid:** source task **#14513** · older sibling **#8323** · project **#2281** · repo map root **#8292** · `HttpService` **#8297** · `HttpOptions` **#8299** · request lifecycle **#8311** (stage 4.1 is the hop this document edits).
 > **Predecessors, none superseded:** **#9618** (`send-options-contract.md`) · **#9633** (`redirect-credential-policy.md`) · **#9939** (`error-message-query-redaction.md`, and the false-universal incident **#9951** whose discipline §8 applies).
 > **Contracts cited as load-bearing:** Design Contracts **#1136** (§1 KISS/DRY/YAGNI, §3 configurability is not free, §4 less is better, §5 checklist, §6 anti-patterns) · Code Contracts **#114** §0 · YAGNI **#1184**.
