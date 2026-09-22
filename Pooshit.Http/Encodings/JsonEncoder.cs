@@ -22,10 +22,5 @@ public class JsonEncoder : IResponseEncoder {
     public JsonEncoder(JsonOptions options) => this.options = options;
 
     /// <inheritdoc />
-    public HttpContent Encode(object data) {
-        // TODO: WriteAsync Stream?
-        StringContent content = new(Json.Json.WriteString(data, options));
-        content.Headers.ContentType = new("application/json");
-        return content;
-    }
+    public HttpContent Encode(object data) => new JsonContent(data, options);
 }
