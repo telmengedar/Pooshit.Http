@@ -421,19 +421,35 @@ Without the first bullet, rows 5 and 9 are green against an implementation with 
 | 7 | `Post308_UnstampedResponse_ThrowsInsteadOfDowngrading` | `SequenceHandler { StampRequestMessage = false }`; assert `HttpServiceException` | D3's first condition is missing and the hop silently becomes a `GET` |
 | 8 | `Post308_CrossOrigin_AuthorizationStrippedWhileBodyRides` | cross-host 308 + `TokenProvider` + body; assert no `Authorization` on hop 1 **and** content present | the preserving arm bypasses #9633, or over-corrects by dropping the body cross-origin |
 | 9 | `Post308_ExpectContinueSurvivesTheBodyCarryingHop` | `ExpectContinue = true`, 308; assert `Expect` present on hop 1 | D5 is missing and the exclusion is still applied unconditionally |
-| 10 | `Post302_HopIsStillGetWithoutBody` | the existing `PostWithBody_FollowedRedirect_HopIsIssuedAsGetWithoutBody` | **dual** — verb preservation leaked onto the legacy arm |
-| 11 | `Get302_TransferEncodingStillDroppedOnBodylessHop` | the existing `SendWithTransferEncoding_BodyDescriptor_IsDroppedWhileOtherHeadersSurvive` | **dual** — D5 inverted the legacy arm and began keeping body descriptors on a bodyless `GET`. It does **not** separate D5's two candidate predicates; see the correction below the table. |
-| 12 | `Get308_FollowRedirectsFalse_StillReturnsDefault` | 308, `FollowRedirects` unset; assert `null`, no throw, one request | **dual** — #8316 was folded in after all, silently widening the change (§2.2) |
+| 10 | `PostWithBody_FollowedRedirect_HopIsIssuedAsGetWithoutBody`, and its siblings `Post301_HopIsIssuedAsGetWithoutBody` / `Post303_HopIsIssuedAsGetWithoutBody` | a `POST` with a body into 302 / 301 / 303; assert hop 1 is a `GET` with **no** content | **dual** — verb preservation leaked onto the legacy arm. All three legacy statuses are pinned, not just 302. |
+| 11 | `SendWithTransferEncoding_BodyDescriptor_IsDroppedWhileOtherHeadersSurvive` | `Send` into a 302 carrying `Transfer-Encoding: chunked` and a marker header; assert the descriptor is present on hop 0, absent on hop 1, and the marker survives | **dual** — D5 inverted the legacy arm and began keeping body descriptors on a bodyless `GET`. It does **not** separate D5's two candidate predicates; see the correction below the table. |
+| 12 | `Get308_FollowRedirectsFalse_Throws` | 308, `FollowRedirects` unset; assert `HttpServiceException`, **one** request, and `error.Response.StatusCode` is 308 | **dual** — the unfollowed path stopped being the boundary between this design and #8316. It fails if a future change makes an unfollowed 308 *followed* (one request becomes two) or *silent* again. **Its behaviour inverted when #8316 shipped — see the correction below.** |
 | 13 | `Get308_BodylessHop_StillDropsBodyDescriptor` | a 307/308 answering a **body-less** request; assert `Expect`/`Transfer-Encoding` absent on hop 1 | **the real dual of 9** — D5's predicate was written as "this is a preserving hop" instead of "this hop has a body". Only a preserving hop that carries no body separates the two. |
 | 14 | `Post308_HopFailsWithAnUnrelatedTransportError_IsNotReportedAsAnUnreplayableBody` | 308 whose hop fails for an unrelated transport reason; assert the caller sees that failure, not an unreplayable-body `HttpServiceException` | the net is **over-broad** — the false-positive direction, e.g. a reset connection relabelled as a non-replayable body. Nothing else pins the catch's width. |
 
-Rows 10, 11, 12 and 13 are the duals #114 §13.1.1 asks for: without them the suite is green for four implementations this design explicitly rejects. Rows 10 and 11 already exist and must stay green untouched; row 12 pins a behaviour nobody would think to test precisely because it is the *absence* of a change; row 14 pins the one direction the other thirteen cannot — that the failure net is not wider than the failure.
+Rows 10, 11, 12 and 13 are the duals #114 §13.1.1 asks for: without them the suite is green for four implementations this design explicitly rejects. Rows 10 and 11 pre-date this design and must stay green untouched; row 12 pinned, when it was written, a behaviour nobody would think to test precisely because it was the *absence* of a change — **that is no longer what it pins** (see the correction below); row 14 pins the one direction the other thirteen cannot — that the failure net is not wider than the failure.
 
 > **CORRECTION 2026-09-22 — row 11's claim was wrong, and rows 13 and 14 were missing.** Row 11 originally read:
 >
 > > *"**dual of 9** — D5's predicate was written as 'preserving hop' instead of 'hop has a body'"*
 >
 > Retained per #11228 Lesson 3. **Row 11 cannot be that dual.** It exercises a 302 on the legacy arm, where the legacy hop never carries content — so *"preserving hop"* and *"hop has a body"* are both false and the two predicates agree. Measured by John: row 11 stays green under exactly that mutation. The case that separates them is a **307/308 answering a body-less request**, where the wrong predicate keeps `Expect`/`Transfer-Encoding` on a hop with no body — now row 13. Row 14 closes a second gap found in the same pass: nothing pinned that the consumed-content net is not *over*-broad, which fails in the false-positive direction. Row 11 is still a real guard, against a different mutation, and is restated as such.
+
+> **CORRECTION 2026-09-22 — rows 10, 11 and 12 named identifiers that do not resolve (DiVoid #14528).** The three rows originally read:
+>
+> > *"| 10 | `Post302_HopIsStillGetWithoutBody` | …"*
+> > *"| 11 | `Get302_TransferEncodingStillDroppedOnBodylessHop` | …"*
+> > *"| 12 | `Get308_FollowRedirectsFalse_StillReturnsDefault` | 308, `FollowRedirects` unset; assert `null`, no throw, one request | **dual** — #8316 was folded in after all, silently widening the change"*
+>
+> Retained per #11228 Lesson 3, because *“the identifier was wrong”* is precisely the failure the naming convention exists to make visible, and a silent rewrite would erase the evidence for it.
+>
+> **Rows 10 and 11 were wrong, not superseded.** Both named guards the author intended to describe rather than guards that exist: the tests were already in the suite under different names, quoted correctly one column to the right. A reader grepping the guard column found nothing. **Naming an identifier is necessary and not sufficient — it has to be *the* identifier**, which is the sharpening #14528 took from finding these, and the reason the rule in #1136 §5 says *names the test identifier it pins* rather than *names a test*.
+>
+> **Row 10 also understated its own coverage.** The behaviour is pinned on **all three** legacy statuses — 302, 301 and 303 — not only the 302 the row quoted. Verified by reading each body: every one asserts hop 1 is a `GET` with `Content` null.
+>
+> **Row 12 is a different defect: its behaviour inverted underneath it.** When written, an unfollowed 308 returned `default(T)` silently, and the row existed as a dual proving this design had *not* folded in #8316. #8316 then shipped on its own (design #14574, PR #21), the test was rewritten, and the row's assertion became the opposite of the truth. The guard is now `Get308_FollowRedirectsFalse_Throws` — read, not matched: it sends one request, raises `HttpServiceException`, and asserts the carried status is 308. **The row's *role* changed too**: it no longer guards a scope boundary this design declined to cross, because the thing on the other side has since been built. It now guards that the unfollowed path stays loud and stays unfollowed.
+>
+> **These were the last three SHAPE B rows in the corpus** — the audit in #14595 reported exactly three, all here.
 
 **Not to be added here:** any assertion about hop count or loop behaviour. That is #8323 and folding a capability assertion into a correctness change blurs both.
 
