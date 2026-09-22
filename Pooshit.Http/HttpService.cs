@@ -29,6 +29,8 @@ public class HttpService : IHttpService {
     // HttpStatusCode.PermanentRedirect does not exist on netstandard2.0 (CS0117), the cast compiles on every target
     const HttpStatusCode permanentRedirect = (HttpStatusCode)308;
 
+    const int maxRedirects = 10;
+
     readonly HttpClient client;
     readonly Random random = new();
         
@@ -474,10 +476,15 @@ public class HttpService : IHttpService {
 
     async Task<T> HandleResponse<T>(HttpResponseMessage response, HttpOptions options) {
         if (options?.FollowRedirects ?? false) {
-            if (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod)
-                response = await FollowRedirect(response, options, false);
-            else if (response.StatusCode is HttpStatusCode.RedirectKeepVerb or permanentRedirect)
-                response = await FollowRedirect(response, options, true);
+            int hops = 0;
+            while (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod
+                                       or HttpStatusCode.RedirectKeepVerb or permanentRedirect) {
+                if (++hops > maxRedirects)
+                    throw RedirectFailure(response, options, response.Headers.Location?.ToString(), $"more than {maxRedirects} redirects were followed");
+
+                response = await FollowRedirect(response, options,
+                                                response.StatusCode is HttpStatusCode.RedirectKeepVerb or permanentRedirect);
+            }
         }
 
         if (!(typeof(T) == typeof(HttpResponseMessage)))

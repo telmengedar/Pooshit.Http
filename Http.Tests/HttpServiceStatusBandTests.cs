@@ -131,19 +131,20 @@ public class HttpServiceStatusBandTests {
     }
 
     [Test, Parallelizable]
-    [Description("DiVoid #14516 section 5.3: the hop that is followed is still only one, and the second redirect is now seen rather than swallowed")]
-    public void Get_Redirect308_FollowRedirectsTrue_TwoHopChain_Throws() {
+    [Description("DiVoid #8323: a chain is followed to its end and the band then classifies that end, rather than the chain itself being the failure")]
+    public void Get_Redirect308Chain_EndingOutsideTheBand_Throws() {
         using HttpResponseMessage first = Redirect(HttpStatusCode.PermanentRedirect, "https://other-host.example/target");
         using HttpResponseMessage second = Redirect(HttpStatusCode.PermanentRedirect, "https://third-host.example/target");
+        using HttpResponseMessage last = Empty(HttpStatusCode.NotFound);
 
-        SequenceHandler handler = new(first, second);
+        SequenceHandler handler = new(first, second, last);
         HttpService service = new(handler);
 
         HttpServiceException error = Assert.ThrowsAsync<HttpServiceException>(
             () => service.Get<string>("https://example.test/probe", new HttpOptions { FollowRedirects = true }))!;
 
-        Assert.That(handler.Requests, Has.Count.EqualTo(2));
-        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.PermanentRedirect));
+        Assert.That(handler.Requests, Has.Count.EqualTo(3));
+        Assert.That(error.Response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
     }
 
     [Test, Parallelizable]
