@@ -39,7 +39,7 @@ public class HttpService : IHttpService {
         if (handler != null)
             client = new(handler);
         else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create("BROWSER"))) {
-            // wasm crashes with allowautoredirect
+            // per the Fetch standard a browser answers a manual redirect with an opaque response - status 0, no Location - which cannot be followed here, so on that platform redirect policy stays the user agent's
             client = new(new HttpClientHandler {
                                                    AllowAutoRedirect = false
                                                });
